@@ -611,7 +611,8 @@ Remember: Write like a human expert sharing genuine knowledge, not like AI gener
         content = None
         
         if ai_model == 'claude':
-            # FIXED: Proper Anthropic client initialization
+            # FIXED: Proper Anthropic client initialization with error handling
+            anthropic_client = None
             try:
                 anthropic_client = anthropic.Anthropic(
                     api_key=os.getenv('ANTHROPIC_API_KEY')
@@ -627,9 +628,14 @@ Remember: Write like a human expert sharing genuine knowledge, not like AI gener
                 logger.info("Content generated with Claude 3.5 Sonnet")
                 
             except Exception as claude_error:
-                logger.warning(f"Claude failed: {claude_error}")
-                # Fallback to older model
+                logger.warning(f"Claude 3.5 failed: {claude_error}")
+                # Fallback to older model - reinitialize client if needed
                 try:
+                    if anthropic_client is None:
+                        anthropic_client = anthropic.Anthropic(
+                            api_key=os.getenv('ANTHROPIC_API_KEY')
+                        )
+                    
                     response = anthropic_client.messages.create(
                         model="claude-3-sonnet-20240229",
                         max_tokens=4000,
@@ -638,13 +644,17 @@ Remember: Write like a human expert sharing genuine knowledge, not like AI gener
                     )
                     content = response.content[0].text
                     logger.info("Content generated with Claude 3 Sonnet")
-                except Exception as e:
-                    logger.error(f"All Claude models failed: {e}")
-                    raise Exception(f"Claude API failed: {str(e)}")
+                except Exception as fallback_error:
+                    logger.error(f"All Claude models failed: {fallback_error}")
+                    raise Exception(f"Claude API failed: {str(fallback_error)}")
                     
         else:  # ChatGPT
             try:
-                openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                # FIXED: Updated OpenAI client initialization
+                openai_client = openai.OpenAI(
+                    api_key=os.getenv('OPENAI_API_KEY')
+                    # Removed 'proxies' parameter that was causing the error
+                )
                 
                 response = openai_client.chat.completions.create(
                     model="gpt-4o",
@@ -654,9 +664,21 @@ Remember: Write like a human expert sharing genuine knowledge, not like AI gener
                 )
                 content = response.choices[0].message.content
                 logger.info("Content generated with GPT-4o")
-            except Exception as e:
-                logger.error(f"OpenAI failed: {e}")
-                raise Exception(f"OpenAI API failed: {str(e)}")
+            except Exception as openai_error:
+                logger.error(f"OpenAI failed: {openai_error}")
+                try:
+                    # Fallback to GPT-4
+                    response = openai_client.chat.completions.create(
+                        model="gpt-4",
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=4000,
+                        temperature=0.6
+                    )
+                    content = response.choices[0].message.content
+                    logger.info("Content generated with GPT-4 (fallback)")
+                except Exception as fallback_error:
+                    logger.error(f"All OpenAI models failed: {fallback_error}")
+                    raise Exception(f"OpenAI API failed: {str(fallback_error)}")
         
         # CRITICAL: Validate content was actually generated
         if not content or len(content.strip()) < 200:
