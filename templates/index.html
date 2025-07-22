@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NeonXpert Blog Generator</title>
+    <title>NeonXpert Blog Generator - Smart AI Content Creation</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -12,6 +12,9 @@
         .glass-effect { backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); }
         .hover-scale { transition: transform 0.2s ease-in-out; }
         .hover-scale:hover { transform: scale(1.02); }
+        .preview-content { max-height: 400px; overflow-y: auto; }
+        .subcategory-card { transition: all 0.3s ease; }
+        .subcategory-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -26,6 +29,7 @@
                             <i class="fas fa-blog text-white text-lg"></i>
                         </div>
                         <h1 class="text-2xl font-bold text-white">NeonXpert Blog Generator</h1>
+                        <span class="text-white/60 text-sm">Smart AI Edition</span>
                     </div>
                     <div class="text-white/80 text-sm">Premium Content Automation</div>
                 </div>
@@ -54,12 +58,21 @@
                             <input type="file" x-ref="fileInput" @change="handleFileSelect($event)" accept=".csv" class="hidden">
                         </div>
                         <div x-show="csvFile" class="bg-green-50 border border-green-200 rounded-lg p-3">
-                            <div class="flex items-center space-x-2">
-                                <i class="fas fa-file-csv text-green-500"></i>
-                                <span class="text-green-700 font-medium" x-text="csvFile?.name"></span>
-                                <button @click="csvFile = null" class="text-red-500 hover:text-red-700">
-                                    <i class="fas fa-times"></i>
-                                </button>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <i class="fas fa-file-csv text-green-500"></i>
+                                    <span class="text-green-700 font-medium" x-text="csvFile?.name"></span>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button @click="analyzeCSV()" :disabled="analyzingCSV" 
+                                            class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50">
+                                        <i class="fas" :class="analyzingCSV ? 'fa-spinner fa-spin' : 'fa-search'" class="mr-1"></i>
+                                        <span x-text="analyzingCSV ? 'Analyzing...' : 'Analyze'"></span>
+                                    </button>
+                                    <button @click="csvFile = null; subcategories = []" class="text-red-500 hover:text-red-700">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -99,7 +112,7 @@
                                     <input type="radio" x-model="aiModel" value="claude" class="text-blue-500">
                                     <div>
                                         <div class="font-medium text-gray-800">Claude 3.5</div>
-                                        <div class="text-sm text-gray-500">Anthropic AI</div>
+                                        <div class="text-sm text-gray-500">Human-like writing</div>
                                     </div>
                                 </label>
                                 <label class="flex items-center space-x-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
@@ -107,83 +120,172 @@
                                     <input type="radio" x-model="aiModel" value="chatgpt" class="text-blue-500">
                                     <div>
                                         <div class="font-medium text-gray-800">GPT-4o</div>
-                                        <div class="text-sm text-gray-500">OpenAI</div>
+                                        <div class="text-sm text-gray-500">SEO optimized</div>
                                     </div>
                                 </label>
                             </div>
                         </div>
-
-                        <!-- Collection Type -->
-                        <div>
-                            <label class="block text-sm font-semibold text-gray-700 mb-3">Collection Type</label>
-                            <select x-model="collectionType" @change="handleCollectionTypeChange()" 
-                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                <option value="business">Business/Commercial</option>
-                                <option value="wedding">Wedding/Events</option>
-                                <option value="home">Home Decor/Personal</option>
-                                <option value="kids">Kids/Family</option>
-                                <option value="custom">Custom (Enter your own)</option>
-                            </select>
-                            <div x-show="collectionType === 'custom'" class="mt-3">
-                                <input type="text" x-model="customCollectionType" placeholder="e.g., Fathers Day Gift Neon Signs"
-                                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            </div>
-                        </div>
                     </div>
-                </div>
-
-                <!-- Generate Button -->
-                <div class="mt-8 text-center">
-                    <button @click="generateBlogIdeas()" :disabled="!csvFile || !collectionStatus.validated || generating"
-                            class="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-xl hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 transform hover:scale-105 transition-all duration-200 shadow-lg">
-                        <i class="fas" :class="generating ? 'fa-spinner fa-spin' : 'fa-magic'" class="mr-2"></i>
-                        <span x-text="generating ? 'Generating...' : 'Generate Blog Ideas'"></span>
-                    </button>
                 </div>
             </div>
 
-            <!-- Step 2: Blog Ideas Selection -->
-            <div x-show="blogIdeas.length > 0" class="bg-white rounded-2xl shadow-2xl p-8 mb-8 hover-scale">
-                <div class="flex items-center justify-between mb-6">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white font-bold">2</div>
-                        <h2 class="text-2xl font-bold text-gray-800">Select Blog Ideas</h2>
-                    </div>
-                    <div class="flex space-x-2">
-                        <button @click="selectAllBlogs()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Select All</button>
-                        <button @click="deselectAllBlogs()" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">Deselect All</button>
-                        <button @click="regenerateSelectedTitles()" :disabled="selectedBlogCount === 0 || regeneratingTitles"
-                                class="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50">
-                            <i class="fas" :class="regeneratingTitles ? 'fa-spinner fa-spin' : 'fa-redo'" class="mr-1"></i>
-                            <span x-text="regeneratingTitles ? 'Regenerating...' : 'Regenerate Selected'"></span>
-                        </button>
-                    </div>
+            <!-- Step 2: Smart Subcategories -->
+            <div x-show="subcategories.length > 0" class="bg-white rounded-2xl shadow-2xl p-8 mb-8 hover-scale">
+                <div class="flex items-center space-x-3 mb-6">
+                    <div class="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold">2</div>
+                    <h2 class="text-2xl font-bold text-gray-800">Select Content Categories</h2>
+                    <span class="text-sm text-gray-500">Based on SEO keyword research</span>
                 </div>
 
-                <div class="grid grid-cols-1 gap-4">
-                    <template x-for="(idea, index) in blogIdeas" :key="index">
-                        <div class="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                            <label class="flex items-start space-x-3 cursor-pointer">
-                                <input type="checkbox" x-model="idea.selected" class="mt-1 text-blue-500 rounded">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    <template x-for="subcategory in subcategories" :key="subcategory.key">
+                        <div class="subcategory-card border-2 rounded-lg p-4 cursor-pointer"
+                             :class="selectedSubcategories.includes(subcategory.key) ? 'border-blue-500 bg-blue-50' : 'border-gray-200'"
+                             @click="toggleSubcategory(subcategory.key)">
+                            <div class="flex items-start justify-between mb-3">
                                 <div class="flex-1">
-                                    <div class="font-semibold text-gray-800" x-text="idea.title"></div>
-                                    <div class="text-sm text-gray-500 mt-1" x-text="idea.description"></div>
-                                    <div class="flex items-center space-x-4 mt-2">
-                                        <span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full" x-text="idea.category"></span>
-                                        <span class="text-xs text-gray-400">Est. word count: <span x-text="idea.wordCount"></span></span>
+                                    <h3 class="font-semibold text-gray-800" x-text="subcategory.name"></h3>
+                                    <div class="flex items-center space-x-3 mt-2">
+                                        <span class="text-sm text-gray-500">
+                                            <i class="fas fa-box mr-1"></i>
+                                            <span x-text="subcategory.count"></span> products
+                                        </span>
+                                        <span class="text-sm text-green-600">
+                                            <i class="fas fa-search mr-1"></i>
+                                            <span x-text="subcategory.monthly_searches"></span>/month
+                                        </span>
                                     </div>
                                 </div>
-                                <button @click.stop="editBlogTitle(index)" class="text-gray-400 hover:text-blue-500">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                            </label>
+                                <div class="ml-3">
+                                    <i class="fas fa-check-circle text-blue-500" 
+                                       x-show="selectedSubcategories.includes(subcategory.key)"></i>
+                                    <i class="fas fa-circle text-gray-300" 
+                                       x-show="!selectedSubcategories.includes(subcategory.key)"></i>
+                                </div>
+                            </div>
+                            <!-- Preview products -->
+                            <div class="text-xs text-gray-400">
+                                <span x-text="subcategory.products.slice(0,3).map(p => p.title).join(', ')"></span>
+                                <span x-show="subcategory.products.length > 3">...</span>
+                            </div>
                         </div>
                     </template>
                 </div>
 
-                <!-- Publish Button -->
-                <div class="mt-8 text-center">
-                    <button @click="startPublishing()" :disabled="selectedBlogCount === 0 || publishing"
+                <div class="text-center">
+                    <button @click="generateTargetedIdeas()" 
+                            :disabled="selectedSubcategories.length === 0 || !collectionStatus.validated || generating"
+                            class="px-8 py-4 bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold rounded-xl hover:from-orange-600 hover:to-red-700 disabled:opacity-50 transform hover:scale-105 transition-all duration-200 shadow-lg">
+                        <i class="fas" :class="generating ? 'fa-spinner fa-spin' : 'fa-magic'" class="mr-2"></i>
+                        <span x-text="generating ? 'Generating...' : `Generate Ideas (${selectedSubcategories.length} categories)`"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 3: Blog Ideas with Preview -->
+            <div x-show="blogIdeas.length > 0" class="bg-white rounded-2xl shadow-2xl p-8 mb-8 hover-scale">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white font-bold">3</div>
+                        <h2 class="text-2xl font-bold text-gray-800">Review & Publish</h2>
+                        <span class="text-sm text-gray-500" x-text="`${blogIdeas.length} targeted ideas generated`"></span>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="selectAllBlogs()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                            Select All
+                        </button>
+                        <button @click="deselectAllBlogs()" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">
+                            Deselect All
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <template x-for="(idea, index) in blogIdeas" :key="index">
+                        <div class="border border-gray-200 rounded-lg overflow-hidden">
+                            <!-- Blog Header -->
+                            <div class="p-4 flex items-start space-x-3">
+                                <input type="checkbox" x-model="idea.selected" class="mt-1 text-blue-500 rounded">
+                                <div class="flex-1">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex-1">
+                                            <h3 class="font-semibold text-gray-800 mb-2" x-text="idea.title"></h3>
+                                            <p class="text-sm text-gray-600 mb-2" x-text="idea.description"></p>
+                                            <div class="flex items-center space-x-4 text-xs">
+                                                <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full" x-text="idea.category"></span>
+                                                <span class="text-gray-500">Subcategory: <span x-text="idea.subcategory"></span></span>
+                                                <span class="text-gray-500">Word count: <span x-text="idea.wordCount"></span></span>
+                                                <span x-show="idea.featured_image" class="text-green-600">
+                                                    <i class="fas fa-image mr-1"></i>Featured image
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="flex space-x-2 ml-4">
+                                            <button @click="editBlogTitle(index)" class="text-gray-400 hover:text-blue-500">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button @click="togglePreview(index)" 
+                                                    :class="idea.showPreview ? 'text-blue-500' : 'text-gray-400'"
+                                                    class="hover:text-blue-500">
+                                                <i class="fas" :class="idea.showPreview ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Preview Section -->
+                            <div x-show="idea.showPreview" x-collapse class="border-t border-gray-200 bg-gray-50">
+                                <div class="p-4">
+                                    <div x-show="!idea.previewContent && !idea.loadingPreview" class="text-center py-4">
+                                        <button @click="loadPreview(index)" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                                            <i class="fas fa-eye mr-2"></i>Generate Preview
+                                        </button>
+                                    </div>
+                                    
+                                    <div x-show="idea.loadingPreview" class="text-center py-8">
+                                        <i class="fas fa-spinner fa-spin text-2xl text-blue-500 mb-2"></i>
+                                        <p class="text-gray-600">Generating preview content...</p>
+                                    </div>
+
+                                    <div x-show="idea.previewContent" class="space-y-4">
+                                        <!-- Featured Image Preview -->
+                                        <div x-show="idea.featured_image" class="text-center">
+                                            <img :src="idea.featured_image" :alt="idea.title" 
+                                                 class="max-w-sm mx-auto rounded-lg shadow-md">
+                                            <p class="text-sm text-gray-500 mt-2">Featured Image</p>
+                                        </div>
+                                        
+                                        <!-- Content Preview -->
+                                        <div class="preview-content bg-white rounded-lg p-4 border">
+                                            <div x-html="idea.previewContent"></div>
+                                        </div>
+                                        
+                                        <!-- Preview Actions -->
+                                        <div class="flex justify-between items-center pt-2 border-t">
+                                            <div class="text-sm text-gray-500">
+                                                Word count: <span x-text="idea.wordCount || 'Calculating...'"></span>
+                                            </div>
+                                            <div class="flex space-x-2">
+                                                <button @click="editContent(index)" class="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600">
+                                                    <i class="fas fa-edit mr-1"></i>Edit Title
+                                                </button>
+                                                <button @click="publishSingleBlog(index)" :disabled="publishing"
+                                                        class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50">
+                                                    <i class="fas fa-rocket mr-1"></i>Publish Now
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Bulk Publish -->
+                <div class="mt-8 text-center border-t pt-6">
+                    <button @click="startBulkPublishing()" :disabled="selectedBlogCount === 0 || publishing"
                             class="px-8 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white font-bold rounded-lg hover:from-green-600 hover:to-teal-700 disabled:opacity-50">
                         <i class="fas fa-rocket mr-2"></i>
                         Publish Selected (<span x-text="selectedBlogCount"></span>)
@@ -191,14 +293,13 @@
                 </div>
             </div>
 
-            <!-- Step 3: Publishing Progress -->
+            <!-- Step 4: Publishing Progress -->
             <div x-show="publishing" class="bg-white rounded-2xl shadow-2xl p-8 hover-scale">
                 <div class="flex items-center space-x-3 mb-6">
-                    <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">3</div>
+                    <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">4</div>
                     <h2 class="text-2xl font-bold text-gray-800">Publishing Progress</h2>
                 </div>
 
-                <!-- Progress Bar -->
                 <div class="mb-6">
                     <div class="flex justify-between items-center mb-2">
                         <span class="text-sm text-gray-600">Publishing blogs...</span>
@@ -210,7 +311,6 @@
                     </div>
                 </div>
 
-                <!-- Current Processing -->
                 <div x-show="currentlyProcessing" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                     <div class="flex items-center space-x-3">
                         <div class="animate-spin"><i class="fas fa-spinner text-blue-500"></i></div>
@@ -221,20 +321,19 @@
                     </div>
                 </div>
 
-                <!-- Results -->
                 <div class="space-y-2 max-h-64 overflow-y-auto">
-                    <!-- Published Blogs -->
                     <template x-for="blog in publishedBlogs" :key="blog.id">
                         <div class="flex items-center space-x-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                             <i class="fas fa-check-circle text-green-500"></i>
                             <div class="flex-1">
                                 <div class="font-medium text-green-800" x-text="blog.title"></div>
-                                <a :href="blog.url" target="_blank" class="text-sm text-green-600 hover:underline">View published blog →</a>
+                                <a :href="blog.url" target="_blank" class="text-sm text-green-600 hover:underline">
+                                    View published blog →
+                                </a>
                             </div>
                         </div>
                     </template>
                     
-                    <!-- Failed Blogs -->
                     <template x-for="blog in failedBlogs" :key="blog.title">
                         <div class="flex items-center space-x-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                             <i class="fas fa-exclamation-circle text-red-500"></i>
@@ -246,13 +345,14 @@
                     </template>
                 </div>
 
-                <!-- Completion -->
                 <div x-show="publishingComplete" class="mt-6 p-6 bg-green-50 border border-green-200 rounded-lg text-center">
                     <i class="fas fa-trophy text-green-500 text-3xl mb-4"></i>
                     <h3 class="text-xl font-bold text-green-800 mb-2">Publishing Complete!</h3>
                     <p class="text-green-600">
                         <span x-text="publishedBlogs.length"></span> blogs published successfully.
-                        <span x-show="failedBlogs.length > 0" x-text="`${failedBlogs.length} failed.`"></span>
+                        <span x-show="failedBlogs.length > 0" class="text-red-600">
+                            <span x-text="failedBlogs.length"></span> failed.
+                        </span>
                     </p>
                 </div>
             </div>
@@ -263,12 +363,13 @@
     <script>
         function blogGenerator() {
             return {
+                // State
                 csvFile: null,
                 collectionUrl: '',
                 collectionStatus: { validated: false, title: '', description: '', error: '' },
                 aiModel: 'claude',
-                collectionType: 'business',
-                customCollectionType: '',
+                subcategories: [],
+                selectedSubcategories: [],
                 blogIdeas: [],
                 publishing: false,
                 publishedCount: 0,
@@ -277,9 +378,11 @@
                 publishedBlogs: [],
                 failedBlogs: [],
                 publishingComplete: false,
+                
+                // Loading states
                 validating: false,
+                analyzingCSV: false,
                 generating: false,
-                regeneratingTitles: false,
 
                 get selectedBlogCount() {
                     return this.blogIdeas.filter(idea => idea.selected).length;
@@ -289,18 +392,14 @@
                     const files = event.dataTransfer.files;
                     if (files.length > 0 && files[0].name.endsWith('.csv')) {
                         this.csvFile = files[0];
+                        this.subcategories = []; // Reset categories
                     }
                 },
 
                 handleFileSelect(event) {
                     if (event.target.files.length > 0) {
                         this.csvFile = event.target.files[0];
-                    }
-                },
-
-                handleCollectionTypeChange() {
-                    if (this.collectionType !== 'custom') {
-                        this.customCollectionType = '';
+                        this.subcategories = []; // Reset categories
                     }
                 },
 
@@ -331,22 +430,69 @@
                     }
                 },
 
-                async generateBlogIdeas() {
-                    if (!this.csvFile || !this.collectionStatus.validated) return;
+                async analyzeCSV() {
+                    if (!this.csvFile) return;
+                    this.analyzingCSV = true;
+
+                    const formData = new FormData();
+                    formData.append('csv_file', this.csvFile);
+
+                    try {
+                        const response = await fetch('/analyze_csv', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            this.subcategories = result.subcategories;
+                            // Auto-select high-value categories
+                            this.selectedSubcategories = result.subcategories
+                                .filter(s => s.monthly_searches >= 400)
+                                .map(s => s.key);
+                        } else {
+                            alert('CSV analysis failed: ' + result.error);
+                        }
+                    } catch (error) {
+                        alert('Failed to analyze CSV');
+                    } finally {
+                        this.analyzingCSV = false;
+                    }
+                },
+
+                toggleSubcategory(key) {
+                    const index = this.selectedSubcategories.indexOf(key);
+                    if (index > -1) {
+                        this.selectedSubcategories.splice(index, 1);
+                    } else {
+                        this.selectedSubcategories.push(key);
+                    }
+                },
+
+                async generateTargetedIdeas() {
+                    if (!this.csvFile || !this.collectionStatus.validated || this.selectedSubcategories.length === 0) return;
                     this.generating = true;
 
                     const formData = new FormData();
                     formData.append('csv_file', this.csvFile);
                     formData.append('collection_url', this.collectionUrl);
-                    formData.append('ai_model', this.aiModel);
-                    formData.append('collection_type', this.collectionType);
-                    formData.append('custom_collection_type', this.customCollectionType);
+                    formData.append('selected_subcategories', JSON.stringify(this.selectedSubcategories));
 
                     try {
-                        const response = await fetch('/generate_ideas', { method: 'POST', body: formData });
+                        const response = await fetch('/generate_ideas', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
                         const result = await response.json();
                         if (result.success) {
-                            this.blogIdeas = result.ideas.map(idea => ({ ...idea, selected: true }));
+                            this.blogIdeas = result.ideas.map(idea => ({
+                                ...idea,
+                                selected: true,
+                                showPreview: false,
+                                previewContent: null,
+                                loadingPreview: false
+                            }));
                         } else {
                             alert('Blog idea generation failed: ' + result.error);
                         }
@@ -357,8 +503,13 @@
                     }
                 },
 
-                selectAllBlogs() { this.blogIdeas.forEach(idea => idea.selected = true); },
-                deselectAllBlogs() { this.blogIdeas.forEach(idea => idea.selected = false); },
+                selectAllBlogs() { 
+                    this.blogIdeas.forEach(idea => idea.selected = true); 
+                },
+                
+                deselectAllBlogs() { 
+                    this.blogIdeas.forEach(idea => idea.selected = false); 
+                },
 
                 editBlogTitle(index) {
                     const newTitle = prompt('Edit blog title:', this.blogIdeas[index].title);
@@ -367,45 +518,83 @@
                     }
                 },
 
-                async regenerateSelectedTitles() {
-                    const selectedIndices = this.blogIdeas
-                        .map((idea, index) => idea.selected ? index : null)
-                        .filter(index => index !== null);
+                togglePreview(index) {
+                    this.blogIdeas[index].showPreview = !this.blogIdeas[index].showPreview;
+                },
+
+                async loadPreview(index) {
+                    const idea = this.blogIdeas[index];
+                    if (idea.previewContent) return; // Already loaded
                     
-                    if (selectedIndices.length === 0) return;
-                    this.regeneratingTitles = true;
+                    idea.loadingPreview = true;
 
                     try {
-                        const response = await fetch('/regenerate_selected_titles', {
+                        const response = await fetch('/generate_preview', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                selected_indices: selectedIndices,
+                                idea: idea,
                                 collection_url: this.collectionUrl,
-                                collection_type: this.collectionType === 'custom' ? this.customCollectionType : this.collectionType
+                                ai_model: this.aiModel
                             })
                         });
                         
                         const result = await response.json();
                         if (result.success) {
-                            Object.entries(result.new_titles).forEach(([index, newData]) => {
-                                const idx = parseInt(index);
-                                if (this.blogIdeas[idx]) {
-                                    this.blogIdeas[idx].title = newData.title;
-                                    this.blogIdeas[idx].description = newData.description;
-                                }
-                            });
+                            idea.previewContent = result.content;
+                            idea.wordCount = result.word_count;
                         } else {
-                            alert('Title regeneration failed: ' + result.error);
+                            alert('Preview generation failed: ' + result.error);
                         }
                     } catch (error) {
-                        alert('Failed to regenerate titles');
+                        alert('Failed to generate preview');
                     } finally {
-                        this.regeneratingTitles = false;
+                        idea.loadingPreview = false;
                     }
                 },
 
-                async startPublishing() {
+                editContent(index) {
+                    const newTitle = prompt('Edit blog title:', this.blogIdeas[index].title);
+                    if (newTitle && newTitle.trim()) {
+                        this.blogIdeas[index].title = newTitle.trim();
+                        // Clear preview to force regeneration with new title
+                        this.blogIdeas[index].previewContent = null;
+                    }
+                },
+
+                async publishSingleBlog(index) {
+                    const idea = this.blogIdeas[index];
+                    this.currentlyProcessing = idea.title;
+
+                    try {
+                        const response = await fetch('/publish_blog', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                idea: idea,
+                                collection_url: this.collectionUrl,
+                                ai_model: this.aiModel,
+                                custom_content: idea.previewContent // Use preview if available
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            alert(`Blog "${idea.title}" published successfully!\n\nView at: ${result.blog_url}`);
+                            // Mark as published
+                            idea.selected = false;
+                            idea.published = true;
+                        } else {
+                            alert('Publishing failed: ' + result.error);
+                        }
+                    } catch (error) {
+                        alert('Publishing failed: ' + error.message);
+                    } finally {
+                        this.currentlyProcessing = null;
+                    }
+                },
+
+                async startBulkPublishing() {
                     const selectedIdeas = this.blogIdeas.filter(idea => idea.selected);
                     if (selectedIdeas.length === 0) return;
 
@@ -424,22 +613,36 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    idea: idea, collection_url: this.collectionUrl, ai_model: this.aiModel
+                                    idea: idea,
+                                    collection_url: this.collectionUrl,
+                                    ai_model: this.aiModel,
+                                    custom_content: idea.previewContent
                                 })
                             });
                             
                             const result = await response.json();
                             if (result.success) {
                                 this.publishedBlogs.push({
-                                    id: result.blog_id, title: idea.title, url: result.blog_url
+                                    id: result.blog_id,
+                                    title: idea.title,
+                                    url: result.blog_url
                                 });
                                 this.publishedCount++;
                             } else {
-                                this.failedBlogs.push({ title: idea.title, error: result.error });
+                                this.failedBlogs.push({
+                                    title: idea.title,
+                                    error: result.error
+                                });
                             }
                         } catch (error) {
-                            this.failedBlogs.push({ title: idea.title, error: 'Network error: ' + error.message });
+                            this.failedBlogs.push({
+                                title: idea.title,
+                                error: 'Network error: ' + error.message
+                            });
                         }
+                        
+                        // Small delay between publishes
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
 
                     this.currentlyProcessing = null;
