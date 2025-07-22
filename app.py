@@ -2,7 +2,6 @@ import os
 import csv
 import json
 import requests
-import pandas as pd
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 import anthropic
@@ -88,30 +87,36 @@ def generate_ideas():
         # Create uploads directory if it doesn't exist
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         
-        # Save and process CSV
+        # Save and process CSV using built-in csv module
         filename = secure_filename(csv_file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         csv_file.save(filepath)
         
-        # Read CSV and extract product data
-        df = pd.read_csv(filepath)
-        
-        # Get unique products (first occurrence only)
+        # Read CSV and extract product data using built-in CSV reader
         unique_products = []
         seen_handles = set()
         
-        for _, row in df.iterrows():
-            handle = row.get('Handle', '')
-            if handle and handle not in seen_handles:
-                seen_handles.add(handle)
-                unique_products.append({
-                    'handle': handle,
-                    'title': row.get('Title', ''),
-                    'body': row.get('Body (HTML)', ''),
-                    'tags': row.get('Tags', ''),
-                    'image_url': row.get('Variant Image', ''),
-                    'price': row.get('Variant Price', '')
-                })
+        with open(filepath, 'r', encoding='utf-8') as csvfile:
+            # Detect delimiter and read CSV
+            sample = csvfile.read(1024)
+            csvfile.seek(0)
+            sniffer = csv.Sniffer()
+            delimiter = sniffer.sniff(sample).delimiter
+            
+            reader = csv.DictReader(csvfile, delimiter=delimiter)
+            
+            for row in reader:
+                handle = row.get('Handle', '')
+                if handle and handle not in seen_handles:
+                    seen_handles.add(handle)
+                    unique_products.append({
+                        'handle': handle,
+                        'title': row.get('Title', ''),
+                        'body': row.get('Body (HTML)', ''),
+                        'tags': row.get('Tags', ''),
+                        'image_url': row.get('Variant Image', ''),
+                        'price': row.get('Variant Price', '')
+                    })
         
         # Generate blog ideas based on collection type
         blog_ideas = generate_blog_ideas_for_type(collection_type, unique_products, collection_url)
