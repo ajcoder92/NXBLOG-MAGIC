@@ -25,7 +25,6 @@ SHOP_NAME = os.getenv("SHOP_NAME")
 API_KEY = os.getenv("SHOPIFY_API_KEY")
 PASSWORD = os.getenv("SHOPIFY_PASSWORD")
 BLOG_ID = os.getenv("SHOPIFY_BLOG_ID")
-SHOP_URL = f"https://{API_KEY}:{PASSWORD}@{SHOP_NAME}.myshopify.com/admin/api/2023-07"
 
 @app.route('/')
 def index():
@@ -44,9 +43,13 @@ def validate_collection():
         else:
             return jsonify({'success': False, 'error': 'Invalid collection URL'})
         
-        # Fetch collection data from Shopify
+        # Fetch collection data from Shopify - FIXED URL
         shopify_url = f"https://{SHOP_NAME}.myshopify.com/admin/api/2023-07/collections.json"
-        response = requests.get(shopify_url)
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.get(shopify_url, auth=(API_KEY, PASSWORD), headers=headers)
         
         if response.status_code == 200:
             collections = response.json().get('collections', [])
@@ -66,7 +69,7 @@ def validate_collection():
             else:
                 return jsonify({'success': False, 'error': 'Collection not found'})
         else:
-            return jsonify({'success': False, 'error': 'Failed to fetch collection data'})
+            return jsonify({'success': False, 'error': f'Shopify API error: {response.status_code}'})
             
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -80,6 +83,11 @@ def generate_ideas():
         collection_url = request.form.get('collection_url')
         ai_model = request.form.get('ai_model')
         collection_type = request.form.get('collection_type')
+        custom_collection_type = request.form.get('custom_collection_type', '')
+        
+        # Use custom type if provided
+        if collection_type == 'custom' and custom_collection_type:
+            collection_type = custom_collection_type
         
         if not csv_file:
             return jsonify({'success': False, 'error': 'No CSV file uploaded'})
@@ -274,16 +282,45 @@ def generate_blog_ideas_for_type(collection_type, products, collection_url):
             }
         ]
     
-    # Default fallback
-    return [
-        {
-            'title': f'Best {collection_name} for Your Needs',
-            'description': 'General guide covering top products and use cases',
-            'category': 'Guide',
-            'wordCount': '800-1000',
-            'type': 'guide'
-        }
-    ]
+    else:
+        # Custom collection type - generate generic blog ideas
+        return [
+            {
+                'title': f'Best {collection_name} for Every Occasion',
+                'description': 'Comprehensive guide featuring top products and use cases',
+                'category': 'Guide',
+                'wordCount': '800-1000',
+                'type': 'guide'
+            },
+            {
+                'title': f'How to Choose the Perfect {collection_name}',
+                'description': 'Step-by-step selection guide for buyers',
+                'category': 'How-To',
+                'wordCount': '900-1100',
+                'type': 'howto'
+            },
+            {
+                'title': f'10 Creative {collection_name} Ideas That Wow',
+                'description': 'Inspiring ideas and creative implementations',
+                'category': 'Inspiration',
+                'wordCount': '800-1000',
+                'type': 'inspiration'
+            },
+            {
+                'title': f'{collection_name} Trends You Need to Know in 2025',
+                'description': 'Latest trends and what to expect this year',
+                'category': 'Trends',
+                'wordCount': '700-900',
+                'type': 'trends'
+            },
+            {
+                'title': f'Instagram-Perfect {collection_name} That Get Shared',
+                'description': 'Social media worthy designs and setups',
+                'category': 'Social Media',
+                'wordCount': '700-900',
+                'type': 'social'
+            }
+        ]
 
 @app.route('/publish_blog', methods=['POST'])
 def publish_blog():
@@ -330,9 +367,11 @@ def publish_blog():
         }
         
         # Upload to Shopify
+        shopify_url = f"https://{SHOP_NAME}.myshopify.com/admin/api/2023-07/blogs/{BLOG_ID}/articles.json"
         response = requests.post(
-            f"{SHOP_URL}/blogs/{BLOG_ID}/articles.json",
+            shopify_url,
             json=blog_data,
+            auth=(API_KEY, PASSWORD),
             headers={"Content-Type": "application/json"}
         )
         
@@ -383,25 +422,39 @@ def generate_blog_content(idea, collection_url, ai_model):
     """
     
     if ai_model == 'claude':
-        # Initialize Claude client only when needed - LATEST CLAUDE 3.5 SONNET
+        # Initialize Claude client - TRY LATEST MODELS
         global claude_client
         if claude_client is None:
             claude_client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-            
-        response = claude_client.messages.create(
-            model="claude-3-5-sonnet-20241022",  # LATEST AND BEST Claude model
-            max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
+        
+        # Try latest Claude models in order of preference
+        models_to_try = [
+            "claude-3-5-sonnet-20241022",  # Latest Sonnet
+            "claude-3-opus-20240229",      # Most powerful Claude 3
+            "claude-3-sonnet-20240229"     # Fallback
+        ]
+        
+        for model in models_to_try:
+            try:
+                response = claude_client.messages.create(
+                    model=model,
+                    max_tokens=4000,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return response.content[0].text
+            except Exception as e:
+                continue  # Try next model
+                
+        # If all fail, return error
+        return f"<h2>Blog content generation failed</h2><p>Please check your API keys and try again.</p>"
     
-    else:  # ChatGPT - LATEST GPT-4o MODEL
+    else:  # ChatGPT - LATEST GPT-4o
         global openai_client
         if openai_client is None:
             openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
             
         response = openai_client.chat.completions.create(
-            model="gpt-4o",  # LATEST AND BEST OpenAI model
+            model="gpt-4o",  # Latest OpenAI model
             messages=[{"role": "user", "content": prompt}],
             max_tokens=4000,
             temperature=0.7
