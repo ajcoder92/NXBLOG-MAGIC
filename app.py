@@ -16,9 +16,9 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'nx-blog-generator-2025')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max
 
-# API Clients
-claude_client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-openai.api_key = os.getenv('OPENAI_API_KEY')
+# API Clients - Initialize lazily to avoid startup errors
+claude_client = None
+openai_client = None
 
 # Shopify Config
 SHOP_NAME = os.getenv("SHOP_NAME")
@@ -355,7 +355,7 @@ def publish_blog():
         return jsonify({'success': False, 'error': str(e)})
 
 def generate_blog_content(idea, collection_url, ai_model):
-    """Generate blog content using specified AI model"""
+    """Generate blog content using specified AI model with LATEST MODELS"""
     
     prompt = f"""
     Write a comprehensive, high-quality blog post with the title: "{idea['title']}"
@@ -383,16 +383,25 @@ def generate_blog_content(idea, collection_url, ai_model):
     """
     
     if ai_model == 'claude':
+        # Initialize Claude client only when needed - LATEST CLAUDE 3.5 SONNET
+        global claude_client
+        if claude_client is None:
+            claude_client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+            
         response = claude_client.messages.create(
-            model="claude-3-sonnet-20240229",
+            model="claude-3-5-sonnet-20241022",  # LATEST AND BEST Claude model
             max_tokens=4000,
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text
     
-    else:  # ChatGPT
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+    else:  # ChatGPT - LATEST GPT-4o MODEL
+        global openai_client
+        if openai_client is None:
+            openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+            
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",  # LATEST AND BEST OpenAI model
             messages=[{"role": "user", "content": prompt}],
             max_tokens=4000,
             temperature=0.7
