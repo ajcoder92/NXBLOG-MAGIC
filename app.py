@@ -607,105 +607,150 @@ STRUCTURE:
 Remember: Write like a human expert sharing genuine knowledge, not like AI generating content.
 """
     
-    try:
-        content = None
+    content = None
+    errors = []
+    
+    # Try Claude first if selected
+    if ai_model == 'claude':
+        content, error = try_claude_generation(prompt)
+        if error:
+            errors.append(f"Claude: {error}")
         
-        if ai_model == 'claude':
-            # FIXED: Proper Anthropic client initialization with error handling
-            anthropic_client = None
+        # If Claude failed, try OpenAI as backup
+        if not content:
+            logger.info("Claude failed, trying OpenAI as backup...")
+            backup_content, backup_error = try_openai_generation(prompt)
+            if backup_content:
+                content = backup_content
+                logger.info("OpenAI backup successful")
+            else:
+                errors.append(f"OpenAI backup: {backup_error}")
+    
+    # Try OpenAI first if selected  
+    else:
+        content, error = try_openai_generation(prompt)
+        if error:
+            errors.append(f"OpenAI: {error}")
+        
+        # If OpenAI failed, try Claude as backup
+        if not content:
+            logger.info("OpenAI failed, trying Claude as backup...")
+            backup_content, backup_error = try_claude_generation(prompt)
+            if backup_content:
+                content = backup_content
+                logger.info("Claude backup successful")
+            else:
+                errors.append(f"Claude backup: {backup_error}")
+    
+    # If both failed, raise exception with details
+    if not content:
+        error_msg = " | ".join(errors)
+        logger.error(f"All AI models failed: {error_msg}")
+        raise Exception(f"All AI models failed: {error_msg}")
+    
+    # Validate content quality
+    if len(content.strip()) < 200:
+        raise Exception("AI returned insufficient content")
+    
+    # Add featured image in content if available
+    if idea.get('featured_image'):
+        image_html = f'''
+        <div style="text-align: center; margin: 30px 0;">
+            <img src="{idea['featured_image']}" alt="{idea['title']}" style="width:100%;max-width:600px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+            <p style="font-size:14px;color:#666;margin-top:10px;font-style:italic;">Featured: {idea.get('featured_product', {}).get('title', 'NeonXpert Open Sign')}</p>
+        </div>
+        '''
+        # Insert image after first paragraph
+        paragraphs = content.split('</p>')
+        if len(paragraphs) > 1:
+            content = paragraphs[0] + '</p>' + image_html + '</p>'.join(paragraphs[1:])
+        else:
+            # If no paragraphs found, add image after first heading
+            content = content.replace('</h2>', '</h2>' + image_html, 1)
+    
+    return content
+
+def try_claude_generation(prompt):
+    """Safely try Claude generation with proper error handling"""
+    try:
+        # Always create fresh client instance
+        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+        
+        # Try Claude 3.5 Sonnet first
+        try:
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=4000,
+                temperature=0.6,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            content = response.content[0].text
+            logger.info("Content generated with Claude 3.5 Sonnet")
+            return content, None
+            
+        except Exception as sonnet_error:
+            logger.warning(f"Claude 3.5 Sonnet failed: {sonnet_error}")
+            
+            # Try Claude 3 Sonnet fallback
             try:
-                anthropic_client = anthropic.Anthropic(
-                    api_key=os.getenv('ANTHROPIC_API_KEY')
-                )
-                
-                response = anthropic_client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                response = client.messages.create(
+                    model="claude-3-sonnet-20240229",
                     max_tokens=4000,
                     temperature=0.6,
                     messages=[{"role": "user", "content": prompt}]
                 )
                 content = response.content[0].text
-                logger.info("Content generated with Claude 3.5 Sonnet")
+                logger.info("Content generated with Claude 3 Sonnet (fallback)")
+                return content, None
                 
-            except Exception as claude_error:
-                logger.warning(f"Claude 3.5 failed: {claude_error}")
-                # Fallback to older model - reinitialize client if needed
-                try:
-                    if anthropic_client is None:
-                        anthropic_client = anthropic.Anthropic(
-                            api_key=os.getenv('ANTHROPIC_API_KEY')
-                        )
-                    
-                    response = anthropic_client.messages.create(
-                        model="claude-3-sonnet-20240229",
-                        max_tokens=4000,
-                        temperature=0.6,
-                        messages=[{"role": "user", "content": prompt}]
-                    )
-                    content = response.content[0].text
-                    logger.info("Content generated with Claude 3 Sonnet")
-                except Exception as fallback_error:
-                    logger.error(f"All Claude models failed: {fallback_error}")
-                    raise Exception(f"Claude API failed: {str(fallback_error)}")
-                    
-        else:  # ChatGPT
+            except Exception as fallback_error:
+                logger.error(f"Claude 3 Sonnet fallback failed: {fallback_error}")
+                return None, f"All Claude models failed: {fallback_error}"
+                
+    except Exception as client_error:
+        logger.error(f"Claude client initialization failed: {client_error}")
+        return None, f"Claude client error: {client_error}"
+
+def try_openai_generation(prompt):
+    """Safely try OpenAI generation with proper error handling"""
+    try:
+        # Always create fresh client instance
+        client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        
+        # Try GPT-4o first
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=4000,
+                temperature=0.6
+            )
+            content = response.choices[0].message.content
+            logger.info("Content generated with GPT-4o")
+            return content, None
+            
+        except Exception as gpt4o_error:
+            logger.warning(f"GPT-4o failed: {gpt4o_error}")
+            
+            # Try GPT-4 fallback
             try:
-                # FIXED: Updated OpenAI client initialization
-                openai_client = openai.OpenAI(
-                    api_key=os.getenv('OPENAI_API_KEY')
-                    # Removed 'proxies' parameter that was causing the error
-                )
-                
-                response = openai_client.chat.completions.create(
-                    model="gpt-4o",
+                response = client.chat.completions.create(
+                    model="gpt-4",
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=4000,
                     temperature=0.6
                 )
                 content = response.choices[0].message.content
-                logger.info("Content generated with GPT-4o")
-            except Exception as openai_error:
-                logger.error(f"OpenAI failed: {openai_error}")
-                try:
-                    # Fallback to GPT-4
-                    response = openai_client.chat.completions.create(
-                        model="gpt-4",
-                        messages=[{"role": "user", "content": prompt}],
-                        max_tokens=4000,
-                        temperature=0.6
-                    )
-                    content = response.choices[0].message.content
-                    logger.info("Content generated with GPT-4 (fallback)")
-                except Exception as fallback_error:
-                    logger.error(f"All OpenAI models failed: {fallback_error}")
-                    raise Exception(f"OpenAI API failed: {str(fallback_error)}")
-        
-        # CRITICAL: Validate content was actually generated
-        if not content or len(content.strip()) < 200:
-            raise Exception("AI returned insufficient content")
-        
-        # Add featured image in content if available
-        if idea.get('featured_image'):
-            image_html = f'''
-            <div style="text-align: center; margin: 30px 0;">
-                <img src="{idea['featured_image']}" alt="{idea['title']}" style="width:100%;max-width:600px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
-                <p style="font-size:14px;color:#666;margin-top:10px;font-style:italic;">Featured: {idea.get('featured_product', {}).get('title', 'NeonXpert Open Sign')}</p>
-            </div>
-            '''
-            # Insert image after first paragraph
-            paragraphs = content.split('</p>')
-            if len(paragraphs) > 1:
-                content = paragraphs[0] + '</p>' + image_html + '</p>'.join(paragraphs[1:])
-            else:
-                # If no paragraphs found, add image after first heading
-                content = content.replace('</h2>', '</h2>' + image_html, 1)
-        
-        return content
-        
-    except Exception as e:
-        logger.error(f"Content generation failed: {e}")
-        # CRITICAL: Don't return fallback text, raise exception
-        raise Exception(f"AI content generation failed: {str(e)}")
+                logger.info("Content generated with GPT-4 (fallback)")
+                return content, None
+                
+            except Exception as fallback_error:
+                logger.error(f"GPT-4 fallback failed: {fallback_error}")
+                return None, f"All OpenAI models failed: {fallback_error}"
+                
+    except Exception as client_error:
+        logger.error(f"OpenAI client initialization failed: {client_error}")
+        return None, f"OpenAI client error: {client_error}"
 
 def create_slug(title):
     """Create SEO-friendly URL slug"""
