@@ -128,12 +128,21 @@
                         <!-- Collection Type -->
                         <div>
                             <label class="block text-sm font-semibold text-gray-700 mb-3">Collection Type</label>
-                            <select x-model="collectionType" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <select x-model="collectionType" @change="handleCollectionTypeChange()" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                 <option value="business">Business/Commercial</option>
                                 <option value="wedding">Wedding/Events</option>
                                 <option value="home">Home Decor/Personal</option>
                                 <option value="kids">Kids/Family</option>
+                                <option value="custom">Custom (Enter your own)</option>
                             </select>
+                            
+                            <!-- Custom Collection Type Input -->
+                            <div x-show="collectionType === 'custom'" class="mt-3">
+                                <input type="text" 
+                                       x-model="customCollectionType" 
+                                       placeholder="e.g., Fathers Day Gift Neon Signs"
+                                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -175,247 +184,255 @@
                                     <div class="font-semibold text-gray-800" x-text="idea.title"></div>
                                     <div class="text-sm text-gray-500 mt-1" x-text="idea.description"></div>
                                     <div class="flex items-center space-x-4 mt-2">
-                                        <span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full" x-text="idea.category"></span>
-                                        <span class="text-xs text-gray-400">Est. word count: <span x-text="idea.wordCount"></span></span>
-                                    </div>
-                                </div>
-                                <button @click.stop="editBlogTitle(index)" class="text-gray-400 hover:text-blue-500">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                            </label>
-                        </div>
-                    </template>
-                </div>
+                                        <span class="text-xs px-2 py-1 bg-<span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full" x-text="idea.category"></span>
+                                       <span class="text-xs text-gray-400">Est. word count: <span x-text="idea.wordCount"></span></span>
+                                   </div>
+                               </div>
+                               <button @click.stop="editBlogTitle(index)" class="text-gray-400 hover:text-blue-500">
+                                   <i class="fas fa-edit"></i>
+                               </button>
+                           </label>
+                       </div>
+                   </template>
+               </div>
 
-                <!-- Action Buttons -->
-                <div class="mt-8 flex justify-center space-x-4">
-                    <button @click="regenerateBlogIdeas()" class="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600">
-                        <i class="fas fa-redo mr-2"></i>
-                        Regenerate All
-                    </button>
-                    <button @click="startPublishing()" 
-                            :disabled="selectedBlogCount === 0"
-                            class="px-8 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white font-bold rounded-lg hover:from-green-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i class="fas fa-rocket mr-2"></i>
-                        Publish Selected (<span x-text="selectedBlogCount"></span>)
-                    </button>
-                </div>
-            </div>
+               <!-- Action Buttons -->
+               <div class="mt-8 flex justify-center space-x-4">
+                   <button @click="regenerateBlogIdeas()" class="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600">
+                       <i class="fas fa-redo mr-2"></i>
+                       Regenerate All
+                   </button>
+                   <button @click="startPublishing()" 
+                           :disabled="selectedBlogCount === 0"
+                           class="px-8 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white font-bold rounded-lg hover:from-green-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                       <i class="fas fa-rocket mr-2"></i>
+                       Publish Selected (<span x-text="selectedBlogCount"></span>)
+                   </button>
+               </div>
+           </div>
 
-            <!-- Step 3: Publishing Progress -->
-            <div x-show="publishing" class="bg-white rounded-2xl shadow-2xl p-8 hover-scale">
-                <div class="flex items-center space-x-3 mb-6">
-                    <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">3</div>
-                    <h2 class="text-2xl font-bold text-gray-800">Publishing Progress</h2>
-                </div>
+           <!-- Step 3: Publishing Progress -->
+           <div x-show="publishing" class="bg-white rounded-2xl shadow-2xl p-8 hover-scale">
+               <div class="flex items-center space-x-3 mb-6">
+                   <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">3</div>
+                   <h2 class="text-2xl font-bold text-gray-800">Publishing Progress</h2>
+               </div>
 
-                <!-- Progress Bar -->
-                <div class="mb-6">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-sm text-gray-600">Publishing blogs...</span>
-                        <span class="text-sm text-gray-600" x-text="`${publishedCount}/${totalToPublish}`"></span>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-3">
-                        <div class="bg-gradient-to-r from-green-500 to-teal-600 h-3 rounded-full transition-all duration-300"
-                             :style="`width: ${(publishedCount/totalToPublish)*100}%`"></div>
-                    </div>
-                </div>
+               <!-- Progress Bar -->
+               <div class="mb-6">
+                   <div class="flex justify-between items-center mb-2">
+                       <span class="text-sm text-gray-600">Publishing blogs...</span>
+                       <span class="text-sm text-gray-600" x-text="`${publishedCount}/${totalToPublish}`"></span>
+                   </div>
+                   <div class="w-full bg-gray-200 rounded-full h-3">
+                       <div class="bg-gradient-to-r from-green-500 to-teal-600 h-3 rounded-full transition-all duration-300"
+                            :style="`width: ${(publishedCount/totalToPublish)*100}%`"></div>
+                   </div>
+               </div>
 
-                <!-- Current Blog Being Processed -->
-                <div x-show="currentlyProcessing" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <div class="flex items-center space-x-3">
-                        <div class="animate-spin">
-                            <i class="fas fa-spinner text-blue-500"></i>
-                        </div>
-                        <div>
-                            <div class="font-medium text-blue-800">Currently processing:</div>
-                            <div class="text-blue-600" x-text="currentlyProcessing"></div>
-                        </div>
-                    </div>
-                </div>
+               <!-- Current Blog Being Processed -->
+               <div x-show="currentlyProcessing" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                   <div class="flex items-center space-x-3">
+                       <div class="animate-spin">
+                           <i class="fas fa-spinner text-blue-500"></i>
+                       </div>
+                       <div>
+                           <div class="font-medium text-blue-800">Currently processing:</div>
+                           <div class="text-blue-600" x-text="currentlyProcessing"></div>
+                       </div>
+                   </div>
+               </div>
 
-                <!-- Published Blogs List -->
-                <div class="space-y-2 max-h-64 overflow-y-auto">
-                    <template x-for="blog in publishedBlogs" :key="blog.id">
-                        <div class="flex items-center space-x-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                            <i class="fas fa-check-circle text-green-500"></i>
-                            <div class="flex-1">
-                                <div class="font-medium text-green-800" x-text="blog.title"></div>
-                                <a :href="blog.url" target="_blank" class="text-sm text-green-600 hover:underline">
-                                    View published blog →
-                                </a>
-                            </div>
-                        </div>
-                    </template>
-                </div>
+               <!-- Published Blogs List -->
+               <div class="space-y-2 max-h-64 overflow-y-auto">
+                   <template x-for="blog in publishedBlogs" :key="blog.id">
+                       <div class="flex items-center space-x-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                           <i class="fas fa-check-circle text-green-500"></i>
+                           <div class="flex-1">
+                               <div class="font-medium text-green-800" x-text="blog.title"></div>
+                               <a :href="blog.url" target="_blank" class="text-sm text-green-600 hover:underline">
+                                   View published blog →
+                               </a>
+                           </div>
+                       </div>
+                   </template>
+               </div>
 
-                <!-- Completion Message -->
-                <div x-show="publishingComplete" class="mt-6 p-6 bg-green-50 border border-green-200 rounded-lg text-center">
-                    <i class="fas fa-trophy text-green-500 text-3xl mb-4"></i>
-                    <h3 class="text-xl font-bold text-green-800 mb-2">Publishing Complete!</h3>
-                    <p class="text-green-600">All selected blogs have been published successfully.</p>
-                </div>
-            </div>
+               <!-- Completion Message -->
+               <div x-show="publishingComplete" class="mt-6 p-6 bg-green-50 border border-green-200 rounded-lg text-center">
+                   <i class="fas fa-trophy text-green-500 text-3xl mb-4"></i>
+                   <h3 class="text-xl font-bold text-green-800 mb-2">Publishing Complete!</h3>
+                   <p class="text-green-600">All selected blogs have been published successfully.</p>
+               </div>
+           </div>
 
-        </div>
-    </div>
+       </div>
+   </div>
 
-    <script>
-        function blogGenerator() {
-            return {
-                // State
-                csvFile: null,
-                collectionUrl: '',
-                collectionStatus: { validated: false, title: '', description: '' },
-                aiModel: 'claude',
-                collectionType: 'business',
-                blogIdeas: [],
-                publishing: false,
-                publishedCount: 0,
-                totalToPublish: 0,
-                currentlyProcessing: null,
-                publishedBlogs: [],
-                publishingComplete: false,
+   <script>
+       function blogGenerator() {
+           return {
+               // State
+               csvFile: null,
+               collectionUrl: '',
+               collectionStatus: { validated: false, title: '', description: '' },
+               aiModel: 'claude',
+               collectionType: 'business',
+               customCollectionType: '',
+               blogIdeas: [],
+               publishing: false,
+               publishedCount: 0,
+               totalToPublish: 0,
+               currentlyProcessing: null,
+               publishedBlogs: [],
+               publishingComplete: false,
 
-                // Computed
-                get selectedBlogCount() {
-                    return this.blogIdeas.filter(idea => idea.selected).length;
-                },
+               // Computed
+               get selectedBlogCount() {
+                   return this.blogIdeas.filter(idea => idea.selected).length;
+               },
 
-                // Methods
-                handleFileDrop(event) {
-                    const files = event.dataTransfer.files;
-                    if (files.length > 0 && files[0].name.endsWith('.csv')) {
-                        this.csvFile = files[0];
-                    }
-                },
+               // Methods
+               handleFileDrop(event) {
+                   const files = event.dataTransfer.files;
+                   if (files.length > 0 && files[0].name.endsWith('.csv')) {
+                       this.csvFile = files[0];
+                   }
+               },
 
-                handleFileSelect(event) {
-                    if (event.target.files.length > 0) {
-                        this.csvFile = event.target.files[0];
-                    }
-                },
+               handleFileSelect(event) {
+                   if (event.target.files.length > 0) {
+                       this.csvFile = event.target.files[0];
+                   }
+               },
 
-                async validateCollection() {
-                    if (!this.collectionUrl) return;
-                    
-                    try {
-                        const response = await fetch('/validate_collection', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url: this.collectionUrl })
-                        });
-                        
-                        const result = await response.json();
-                        if (result.success) {
-                            this.collectionStatus = {
-                                validated: true,
-                                title: result.title,
-                                description: result.description
-                            };
-                        } else {
-                            alert('Collection validation failed: ' + result.error);
-                        }
-                    } catch (error) {
-                        console.error('Collection validation failed:', error);
-                        alert('Failed to validate collection URL');
-                    }
-                },
+               handleCollectionTypeChange() {
+                   if (this.collectionType !== 'custom') {
+                       this.customCollectionType = '';
+                   }
+               },
 
-                async generateBlogIdeas() {
-                    if (!this.csvFile || !this.collectionStatus.validated) return;
+               async validateCollection() {
+                   if (!this.collectionUrl) return;
+                   
+                   try {
+                       const response = await fetch('/validate_collection', {
+                           method: 'POST',
+                           headers: { 'Content-Type': 'application/json' },
+                           body: JSON.stringify({ url: this.collectionUrl })
+                       });
+                       
+                       const result = await response.json();
+                       if (result.success) {
+                           this.collectionStatus = {
+                               validated: true,
+                               title: result.title,
+                               description: result.description
+                           };
+                       } else {
+                           alert('Collection validation failed: ' + result.error);
+                       }
+                   } catch (error) {
+                       console.error('Collection validation failed:', error);
+                       alert('Failed to validate collection URL');
+                   }
+               },
 
-                    const formData = new FormData();
-                    formData.append('csv_file', this.csvFile);
-                    formData.append('collection_url', this.collectionUrl);
-                    formData.append('ai_model', this.aiModel);
-                    formData.append('collection_type', this.collectionType);
+               async generateBlogIdeas() {
+                   if (!this.csvFile || !this.collectionStatus.validated) return;
 
-                    try {
-                        const response = await fetch('/generate_ideas', {
-                            method: 'POST',
-                            body: formData
-                        });
-                        
-                        const result = await response.json();
-                        if (result.success) {
-                            this.blogIdeas = result.ideas.map(idea => ({
-                                ...idea,
-                                selected: true
-                            }));
-                        } else {
-                            alert('Blog idea generation failed: ' + result.error);
-                        }
-                    } catch (error) {
-                        console.error('Blog idea generation failed:', error);
-                        alert('Failed to generate blog ideas');
-                    }
-                },
+                   const formData = new FormData();
+                   formData.append('csv_file', this.csvFile);
+                   formData.append('collection_url', this.collectionUrl);
+                   formData.append('ai_model', this.aiModel);
+                   formData.append('collection_type', this.collectionType);
+                   formData.append('custom_collection_type', this.customCollectionType);
 
-                selectAllBlogs() {
-                    this.blogIdeas.forEach(idea => idea.selected = true);
-                },
+                   try {
+                       const response = await fetch('/generate_ideas', {
+                           method: 'POST',
+                           body: formData
+                       });
+                       
+                       const result = await response.json();
+                       if (result.success) {
+                           this.blogIdeas = result.ideas.map(idea => ({
+                               ...idea,
+                               selected: true
+                           }));
+                       } else {
+                           alert('Blog idea generation failed: ' + result.error);
+                       }
+                   } catch (error) {
+                       console.error('Blog idea generation failed:', error);
+                       alert('Failed to generate blog ideas');
+                   }
+               },
 
-                deselectAllBlogs() {
-                    this.blogIdeas.forEach(idea => idea.selected = false);
-                },
+               selectAllBlogs() {
+                   this.blogIdeas.forEach(idea => idea.selected = true);
+               },
 
-                editBlogTitle(index) {
-                    const newTitle = prompt('Edit blog title:', this.blogIdeas[index].title);
-                    if (newTitle) {
-                        this.blogIdeas[index].title = newTitle;
-                    }
-                },
+               deselectAllBlogs() {
+                   this.blogIdeas.forEach(idea => idea.selected = false);
+               },
 
-                async regenerateBlogIdeas() {
-                    await this.generateBlogIdeas();
-                },
+               editBlogTitle(index) {
+                   const newTitle = prompt('Edit blog title:', this.blogIdeas[index].title);
+                   if (newTitle) {
+                       this.blogIdeas[index].title = newTitle;
+                   }
+               },
 
-                async startPublishing() {
-                    const selectedIdeas = this.blogIdeas.filter(idea => idea.selected);
-                    if (selectedIdeas.length === 0) return;
+               async regenerateBlogIdeas() {
+                   await this.generateBlogIdeas();
+               },
 
-                    this.publishing = true;
-                    this.publishedCount = 0;
-                    this.totalToPublish = selectedIdeas.length;
-                    this.publishedBlogs = [];
-                    this.publishingComplete = false;
+               async startPublishing() {
+                   const selectedIdeas = this.blogIdeas.filter(idea => idea.selected);
+                   if (selectedIdeas.length === 0) return;
 
-                    for (const idea of selectedIdeas) {
-                        this.currentlyProcessing = idea.title;
-                        
-                        try {
-                            const response = await fetch('/publish_blog', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    idea: idea,
-                                    collection_url: this.collectionUrl,
-                                    ai_model: this.aiModel
-                                })
-                            });
-                            
-                            const result = await response.json();
-                            if (result.success) {
-                                this.publishedBlogs.push({
-                                    id: result.blog_id,
-                                    title: idea.title,
-                                    url: result.blog_url
-                                });
-                                this.publishedCount++;
-                            } else {
-                                console.error('Publishing failed for:', idea.title, result.error);
-                            }
-                        } catch (error) {
-                            console.error('Publishing failed for:', idea.title, error);
-                        }
-                    }
+                   this.publishing = true;
+                   this.publishedCount = 0;
+                   this.totalToPublish = selectedIdeas.length;
+                   this.publishedBlogs = [];
+                   this.publishingComplete = false;
 
-                    this.currentlyProcessing = null;
-                    this.publishingComplete = true;
-                }
-            }
-        }
-    </script>
+                   for (const idea of selectedIdeas) {
+                       this.currentlyProcessing = idea.title;
+                       
+                       try {
+                           const response = await fetch('/publish_blog', {
+                               method: 'POST',
+                               headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify({
+                                   idea: idea,
+                                   collection_url: this.collectionUrl,
+                                   ai_model: this.aiModel
+                               })
+                           });
+                           
+                           const result = await response.json();
+                           if (result.success) {
+                               this.publishedBlogs.push({
+                                   id: result.blog_id,
+                                   title: idea.title,
+                                   url: result.blog_url
+                               });
+                               this.publishedCount++;
+                           } else {
+                               console.error('Publishing failed for:', idea.title, result.error);
+                           }
+                       } catch (error) {
+                           console.error('Publishing failed for:', idea.title, error);
+                       }
+                   }
+
+                   this.currentlyProcessing = null;
+                   this.publishingComplete = true;
+               }
+           }
+       }
+   </script>
 </body>
 </html>
