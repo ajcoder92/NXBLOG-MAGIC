@@ -41,6 +41,184 @@ SEO_KEYWORDS = {
     'custom': {'name': 'Custom Open Signs', 'monthly_searches': 300, 'keywords': ['custom', 'personalized', 'bespoke', 'unique', 'special']}
 }
 
+@app.route('/test_ai', methods=['GET'])
+def test_ai():
+    """Test AI connections independently for debugging"""
+    try:
+        results = {}
+        
+        # Test Claude
+        try:
+            import httpx
+            http_client = httpx.Client(proxies=None, timeout=30.0)
+            claude_client = anthropic.Anthropic(
+                api_key=os.getenv('ANTHROPIC_API_KEY'),
+                http_client=http_client
+            )
+            
+            response = claude_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=100,
+                temperature=0.6,
+                messages=[{"role": "user", "content": "Write a brief sentence about neon signs."}]
+            )
+            
+            results['claude'] = {
+                'status': 'success',
+                'response': response.content[0].text[:100],
+                'model': 'claude-3-5-sonnet-20241022'
+            }
+            http_client.close()
+            
+        except Exception as claude_error:
+            results['claude'] = {
+                'status': 'error',
+                'error': str(claude_error)
+            }
+        
+        # Test OpenAI
+        try:
+            import httpx
+            http_client = httpx.Client(proxies=None, timeout=30.0)
+            openai_client = openai.OpenAI(
+                api_key=os.getenv('OPENAI_API_KEY'),
+                http_client=http_client
+            )
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Write a brief sentence about neon signs."}],
+                max_tokens=100,
+                temperature=0.6
+            )
+            
+            results['openai'] = {
+                'status': 'success',
+                'response': response.choices[0].message.content[:100],
+                'model': 'gpt-4o'
+            }
+            http_client.close()
+            
+        except Exception as openai_error:
+            results['openai'] = {
+                'status': 'error',
+                'error': str(openai_error)
+            }
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'environment': {
+                'has_anthropic_key': bool(os.getenv('ANTHROPIC_API_KEY')),
+                'has_openai_key': bool(os.getenv('OPENAI_API_KEY')),
+                'anthropic_key_preview': os.getenv('ANTHROPIC_API_KEY', '')[:8] + '...' if os.getenv('ANTHROPIC_API_KEY') else 'None',
+                'openai_key_preview': os.getenv('OPENAI_API_KEY', '')[:8] + '...' if os.getenv('OPENAI_API_KEY') else 'None'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"AI test failed: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/debug')
+def debug():
+    """Debug page for testing AI connections"""
+    return '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Connection Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">AI Connection Test</h1>
+        
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <button onclick="testAI()" class="bg-blue-500 text-white px-6 py-3 rounded hover:bg-blue-600">
+                Test AI Connections
+            </button>
+            <div id="loading" class="hidden mt-4 flex items-center space-x-3">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <p>Testing AI connections...</p>
+            </div>
+        </div>
+
+        <div id="results" class="hidden bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-bold mb-4">Test Results</h2>
+            <div id="resultsContent"></div>
+        </div>
+    </div>
+
+    <script>
+        async function testAI() {
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const resultsContent = document.getElementById('resultsContent');
+            
+            loading.classList.remove('hidden');
+            results.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/test_ai');
+                const data = await response.json();
+                
+                loading.classList.add('hidden');
+                results.classList.remove('hidden');
+                
+                let html = '';
+                
+                if (data.success) {
+                    // Environment info
+                    html += '<div class="mb-6 p-4 bg-gray-50 rounded"><h3 class="font-bold mb-2">Environment</h3>';
+                    html += `<p>Anthropic Key: ${data.environment.has_anthropic_key ? '✅ Present' : '❌ Missing'} (${data.environment.anthropic_key_preview})</p>`;
+                    html += `<p>OpenAI Key: ${data.environment.has_openai_key ? '✅ Present' : '❌ Missing'} (${data.environment.openai_key_preview})</p></div>`;
+                    
+                    // Claude results
+                    html += '<div class="mb-4 p-4 border rounded">';
+                    html += '<h3 class="font-bold text-lg mb-2">Claude Test</h3>';
+                    if (data.results.claude.status === 'success') {
+                        html += `<div class="text-green-600">✅ Success</div>`;
+                        html += `<p class="text-sm text-gray-600">Model: ${data.results.claude.model}</p>`;
+                        html += `<p class="mt-2 italic">"${data.results.claude.response}"</p>`;
+                    } else {
+                        html += `<div class="text-red-600">❌ Failed</div>`;
+                        html += `<p class="text-red-500 text-sm mt-2">${data.results.claude.error}</p>`;
+                    }
+                    html += '</div>';
+                    
+                    // OpenAI results
+                    html += '<div class="mb-4 p-4 border rounded">';
+                    html += '<h3 class="font-bold text-lg mb-2">OpenAI Test</h3>';
+                    if (data.results.openai.status === 'success') {
+                        html += `<div class="text-green-600">✅ Success</div>`;
+                        html += `<p class="text-sm text-gray-600">Model: ${data.results.openai.model}</p>`;
+                        html += `<p class="mt-2 italic">"${data.results.openai.response}"</p>`;
+                    } else {
+                        html += `<div class="text-red-600">❌ Failed</div>`;
+                        html += `<p class="text-red-500 text-sm mt-2">${data.results.openai.error}</p>`;
+                    }
+                    html += '</div>';
+                    
+                } else {
+                    html += `<div class="text-red-600">Test failed: ${data.error}</div>`;
+                }
+                
+                resultsContent.innerHTML = html;
+                
+            } catch (error) {
+                loading.classList.add('hidden');
+                results.classList.remove('hidden');
+                resultsContent.innerHTML = `<div class="text-red-600">Network error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
+    '''
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -642,11 +820,16 @@ Remember: Write like a human expert sharing genuine knowledge, not like AI gener
             else:
                 errors.append(f"Claude backup: {backup_error}")
     
-    # If both failed, raise exception with details
+    # If both failed, create simple fallback content
     if not content:
-        error_msg = " | ".join(errors)
-        logger.error(f"All AI models failed: {error_msg}")
-        raise Exception(f"All AI models failed: {error_msg}")
+        logger.warning("All AI models failed, generating simple fallback content")
+        content = generate_fallback_content(idea, collection_url)
+        if content:
+            logger.info("Fallback content generated successfully")
+        else:
+            error_msg = " | ".join(errors)
+            logger.error(f"All generation methods failed: {error_msg}")
+            raise Exception(f"All AI models failed: {error_msg}")
     
     # Validate content quality
     if len(content.strip()) < 200:
@@ -671,10 +854,21 @@ Remember: Write like a human expert sharing genuine knowledge, not like AI gener
     return content
 
 def try_claude_generation(prompt):
-    """Safely try Claude generation with proper error handling"""
+    """Safely try Claude generation with proxy-free client"""
     try:
-        # Always create fresh client instance
-        client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+        # Create client with explicit proxy settings to avoid environment conflicts
+        import httpx
+        
+        # Create HTTP client without any proxy settings
+        http_client = httpx.Client(
+            proxies=None,  # Explicitly disable proxies
+            timeout=60.0
+        )
+        
+        client = anthropic.Anthropic(
+            api_key=os.getenv('ANTHROPIC_API_KEY'),
+            http_client=http_client
+        )
         
         # Try Claude 3.5 Sonnet first
         try:
@@ -686,6 +880,7 @@ def try_claude_generation(prompt):
             )
             content = response.content[0].text
             logger.info("Content generated with Claude 3.5 Sonnet")
+            http_client.close()
             return content, None
             
         except Exception as sonnet_error:
@@ -701,10 +896,12 @@ def try_claude_generation(prompt):
                 )
                 content = response.content[0].text
                 logger.info("Content generated with Claude 3 Sonnet (fallback)")
+                http_client.close()
                 return content, None
                 
             except Exception as fallback_error:
                 logger.error(f"Claude 3 Sonnet fallback failed: {fallback_error}")
+                http_client.close()
                 return None, f"All Claude models failed: {fallback_error}"
                 
     except Exception as client_error:
@@ -712,10 +909,21 @@ def try_claude_generation(prompt):
         return None, f"Claude client error: {client_error}"
 
 def try_openai_generation(prompt):
-    """Safely try OpenAI generation with proper error handling"""
+    """Safely try OpenAI generation with proxy-free client"""
     try:
-        # Always create fresh client instance
-        client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        # Create client with explicit proxy settings to avoid environment conflicts
+        import httpx
+        
+        # Create HTTP client without any proxy settings
+        http_client = httpx.Client(
+            proxies=None,  # Explicitly disable proxies
+            timeout=60.0
+        )
+        
+        client = openai.OpenAI(
+            api_key=os.getenv('OPENAI_API_KEY'),
+            http_client=http_client
+        )
         
         # Try GPT-4o first
         try:
@@ -727,6 +935,7 @@ def try_openai_generation(prompt):
             )
             content = response.choices[0].message.content
             logger.info("Content generated with GPT-4o")
+            http_client.close()
             return content, None
             
         except Exception as gpt4o_error:
@@ -742,10 +951,12 @@ def try_openai_generation(prompt):
                 )
                 content = response.choices[0].message.content
                 logger.info("Content generated with GPT-4 (fallback)")
+                http_client.close()
                 return content, None
                 
             except Exception as fallback_error:
                 logger.error(f"GPT-4 fallback failed: {fallback_error}")
+                http_client.close()
                 return None, f"All OpenAI models failed: {fallback_error}"
                 
     except Exception as client_error:
@@ -785,6 +996,62 @@ def get_professional_tags(title, category):
     tags.extend(["LED Signs", "Business Marketing", "Storefront Design"])
     
     return ", ".join(tags[:8])  # Limit to 8 tags
+
+def generate_fallback_content(idea, collection_url):
+    """Generate basic content when AI fails - better than nothing!"""
+    try:
+        title = idea['title']
+        category = idea.get('category', 'Business')
+        subcategory = idea.get('subcategory', 'Signs')
+        focus_keyword = idea.get('focus_keyword', 'neon signs')
+        
+        content = f"""
+<h1>{title}</h1>
+
+<p>Welcome to our comprehensive guide on {subcategory.lower()}. As experts in the neon signage industry, we understand the importance of quality signage for your business success.</p>
+
+<h2>Why {subcategory} Matter for Your Business</h2>
+
+<p>In today's competitive market, having the right signage can make all the difference. {subcategory} serve as powerful marketing tools that:</p>
+
+<ul>
+<li>Attract new customers to your business</li>
+<li>Create a professional and welcoming atmosphere</li>
+<li>Increase visibility and brand recognition</li>
+<li>Communicate your business hours and availability</li>
+</ul>
+
+<h2>Choosing the Right {subcategory}</h2>
+
+<p>When selecting {focus_keyword} for your business, consider these important factors:</p>
+
+<ul>
+<li><strong>Visibility:</strong> Ensure your sign can be seen from a reasonable distance</li>
+<li><strong>Durability:</strong> Choose weather-resistant materials for outdoor use</li>
+<li><strong>Design:</strong> Match your sign to your brand aesthetic</li>
+<li><strong>Energy Efficiency:</strong> LED options provide bright illumination with lower energy costs</li>
+</ul>
+
+<h2>Professional Installation and Quality</h2>
+
+<p>At NeonXpert, we specialize in creating high-quality neon signs that meet your specific business needs. Our experienced team ensures proper installation and long-lasting performance.</p>
+
+<p>Our collection includes a wide variety of options to suit different business types and preferences. Whether you need something simple and elegant or bold and eye-catching, we have solutions that work.</p>
+
+<h2>Get Started Today</h2>
+
+<p>Ready to enhance your business with professional signage? Browse our <a href="{collection_url}">complete collection</a> to find the perfect sign for your needs.</p>
+
+<p>For custom solutions, check out our <a href="https://neonxpert.com/products/custom-neon-sign">custom neon sign options</a> where you can create something truly unique for your business.</p>
+
+<p>Contact our team today to discuss your signage needs and discover how the right sign can transform your business visibility and customer engagement.</p>
+"""
+        
+        return content.strip()
+        
+    except Exception as e:
+        logger.error(f"Fallback content generation failed: {e}")
+        return None
 
 if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
