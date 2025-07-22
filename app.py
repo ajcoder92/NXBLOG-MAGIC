@@ -45,7 +45,7 @@ def validate_collection():
             return jsonify({'success': False, 'error': 'Invalid collection URL'})
         
         # Fetch collection data from Shopify
-        shopify_url = f"{SHOP_URL}/collections.json"
+        shopify_url = f"https://{SHOP_NAME}.myshopify.com/admin/api/2023-07/collections.json"
         response = requests.get(shopify_url)
         
         if response.status_code == 200:
