@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 import anthropic
 import openai
 from werkzeug.utils import secure_filename
+import logging
+import traceback
 
 load_dotenv()
 
@@ -15,11 +17,15 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'nx-blog-generator-2025')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 
+# Setup logging for debugging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # API Clients
 claude_client = None
 openai_client = None
 
-# MODERN SHOPIFY CONFIG - 2025 APPROACH
+# MODERN SHOPIFY CONFIG
 SHOP_NAME = os.getenv("SHOP_NAME")
 ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
 BLOG_ID = os.getenv("SHOPIFY_BLOG_ID")
@@ -31,7 +37,7 @@ def index():
 
 @app.route('/validate_collection', methods=['POST'])
 def validate_collection():
-    """Validate collection URL using MODERN Shopify API"""
+    """Validate collection URL using modern Shopify API with detailed logging"""
     try:
         data = request.json
         collection_url = data.get('url', '')
@@ -41,7 +47,8 @@ def validate_collection():
         else:
             return jsonify({'success': False, 'error': 'Invalid collection URL format'})
         
-        # MODERN SHOPIFY API HEADERS
+        logger.info(f"Validating collection handle: {handle}")
+        
         headers = {
             "X-Shopify-Access-Token": ACCESS_TOKEN,
             "Content-Type": "application/json"
@@ -49,39 +56,50 @@ def validate_collection():
         
         target_collection = None
         
-        # Check custom collections first
+        # Check custom collections
         try:
             custom_url = f"{SHOP_URL}/custom_collections.json"
+            logger.info(f"Requesting: {custom_url}")
             custom_response = requests.get(custom_url, headers=headers, timeout=10)
+            logger.info(f"Custom collections response: {custom_response.status_code}")
             
             if custom_response.status_code == 200:
                 collections = custom_response.json().get('custom_collections', [])
+                logger.info(f"Found {len(collections)} custom collections")
                 for collection in collections:
                     if collection.get('handle') == handle:
                         target_collection = collection
+                        logger.info(f"Found collection: {collection.get('title')}")
                         break
+            else:
+                logger.error(f"Custom collections error: {custom_response.text}")
         except Exception as e:
-            print(f"Custom collections error: {e}")
+            logger.error(f"Custom collections exception: {e}")
         
         # Check smart collections if not found
         if not target_collection:
             try:
                 smart_url = f"{SHOP_URL}/smart_collections.json"
+                logger.info(f"Requesting: {smart_url}")
                 smart_response = requests.get(smart_url, headers=headers, timeout=10)
+                logger.info(f"Smart collections response: {smart_response.status_code}")
                 
                 if smart_response.status_code == 200:
                     collections = smart_response.json().get('smart_collections', [])
+                    logger.info(f"Found {len(collections)} smart collections")
                     for collection in collections:
                         if collection.get('handle') == handle:
                             target_collection = collection
+                            logger.info(f"Found collection: {collection.get('title')}")
                             break
+                else:
+                    logger.error(f"Smart collections error: {smart_response.text}")
             except Exception as e:
-                print(f"Smart collections error: {e}")
+                logger.error(f"Smart collections exception: {e}")
         
         if target_collection:
             description = target_collection.get('body_html', '')
             if description:
-                # Clean HTML tags
                 import re
                 description = re.sub('<[^<]+?>', '', description)
                 description = description.strip()[:200] + '...' if len(description) > 200 else description
@@ -96,15 +114,17 @@ def validate_collection():
         else:
             return jsonify({
                 'success': False, 
-                'error': f'Collection "{handle}" not found. Please check the URL and try again.'
+                'error': f'Collection "{handle}" not found. Please check the URL.'
             })
             
     except Exception as e:
+        logger.error(f"Collection validation error: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': f'Validation error: {str(e)}'})
 
 @app.route('/generate_ideas', methods=['POST'])
 def generate_ideas():
-    """Generate blog ideas based on uploaded CSV and settings"""
+    """Generate blog ideas with better variety"""
     try:
         csv_file = request.files.get('csv_file')
         collection_url = request.form.get('collection_url')
@@ -130,7 +150,6 @@ def generate_ideas():
         seen_handles = set()
         
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as csvfile:
-            # Auto-detect delimiter
             sample = csvfile.read(1024)
             csvfile.seek(0)
             
@@ -158,8 +177,9 @@ def generate_ideas():
         # Generate blog ideas
         blog_ideas = generate_blog_ideas_for_type(collection_type, unique_products, collection_url)
         
-        # Clean up
         os.remove(filepath)
+        
+        logger.info(f"Generated {len(blog_ideas)} blog ideas for {len(unique_products)} products")
         
         return jsonify({
             'success': True,
@@ -168,10 +188,12 @@ def generate_ideas():
         })
         
     except Exception as e:
+        logger.error(f"Blog generation error: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': f'Generation error: {str(e)}'})
 
 def generate_blog_ideas_for_type(collection_type, products, collection_url):
-    """Generate SEO-optimized blog ideas based on collection type"""
+    """Generate diverse blog ideas"""
     
     collection_name = collection_url.split('/collections/')[-1].replace('-', ' ').title()
     
@@ -179,21 +201,21 @@ def generate_blog_ideas_for_type(collection_type, products, collection_url):
         return [
             {
                 'title': f'Best {collection_name} for Small Businesses That Increase Foot Traffic (2025)',
-                'description': 'Comprehensive guide to choosing business signage that drives customer engagement and sales',
+                'description': 'Comprehensive guide to choosing business signage that drives customer engagement',
                 'category': 'Business Marketing',
                 'wordCount': '1200-1500',
                 'type': 'marketing'
             },
             {
                 'title': f'How to Choose {collection_name} for Your Business (Complete Guide)',
-                'description': 'Expert buyer guide with practical tips for selecting the perfect business signage',
+                'description': 'Expert buyer guide with practical tips for selecting perfect business signage',
                 'category': 'How-To Guide',
                 'wordCount': '1400-1700',
                 'type': 'howto'
             },
             {
                 'title': f'10 {collection_name} Ideas That Actually Boost Sales',
-                'description': 'Data-driven examples of effective business signage with real conversion results',
+                'description': 'Data-driven examples of effective business signage with real results',
                 'category': 'Listicle',
                 'wordCount': '1000-1300',
                 'type': 'listicle'
@@ -207,7 +229,7 @@ def generate_blog_ideas_for_type(collection_type, products, collection_url):
             },
             {
                 'title': f'Instagram-Worthy {collection_name} That Go Viral in 2025',
-                'description': 'Social media optimization guide for business signage that generates organic shares',
+                'description': 'Social media optimization guide for business signage that generates shares',
                 'category': 'Social Media Marketing',
                 'wordCount': '900-1200',
                 'type': 'social'
@@ -232,24 +254,17 @@ def generate_blog_ideas_for_type(collection_type, products, collection_url):
         return [
             {
                 'title': f'30 Stunning {collection_name} Ideas That Will Make Guests Swoon (2025)',
-                'description': 'Romantic wedding signage inspiration with real examples from recent weddings',
+                'description': 'Romantic wedding signage inspiration with real examples',
                 'category': 'Wedding Inspiration',
                 'wordCount': '1500-1800',
                 'type': 'inspiration'
             },
             {
-                'title': f'How to Choose {collection_name} That Match Your Wedding Theme Perfectly',
-                'description': 'Wedding planning guide for selecting signage that complements your special day',
+                'title': f'How to Choose {collection_name} That Match Your Wedding Theme',
+                'description': 'Wedding planning guide for selecting perfect signage',
                 'category': 'Wedding Planning',
                 'wordCount': '1200-1500',
                 'type': 'planning'
-            },
-            {
-                'title': f'DIY {collection_name} vs Professional: What Every Couple Should Know',
-                'description': 'Cost comparison and quality analysis for wedding signage options',
-                'category': 'Wedding DIY',
-                'wordCount': '1100-1400',
-                'type': 'comparison'
             },
             {
                 'title': f'Budget-Friendly {collection_name} That Look Expensive',
@@ -257,56 +272,6 @@ def generate_blog_ideas_for_type(collection_type, products, collection_url):
                 'category': 'Wedding Budget',
                 'wordCount': '1000-1300',
                 'type': 'budget'
-            },
-            {
-                'title': f'Instagram-Perfect {collection_name} for Unforgettable Wedding Photos',
-                'description': 'Photography-focused guide for creating social media worthy wedding moments',
-                'category': 'Wedding Photography',
-                'wordCount': '900-1200',
-                'type': 'photography'
-            }
-        ]
-    
-    elif collection_type == 'home':
-        return [
-            {
-                'title': f'{collection_name} That Transform Any Room: Interior Design Guide',
-                'description': 'Complete home decoration guide with before/after examples and styling tips',
-                'category': 'Home Decor',
-                'wordCount': '1200-1500',
-                'type': 'design'
-            },
-            {
-                'title': f'How to Style {collection_name} in Modern Homes (2025 Trends)',
-                'description': 'Contemporary home styling guide with placement strategies and color coordination',
-                'category': 'Interior Styling',
-                'wordCount': '1000-1300',
-                'type': 'styling'
-            },
-            {
-                'title': f'Seasonal {collection_name} Ideas for Year-Round Home Decor',
-                'description': 'Creative seasonal decoration strategies and mood-setting techniques',
-                'category': 'Seasonal Decor',
-                'wordCount': '1100-1400',
-                'type': 'seasonal'
-            }
-        ]
-    
-    elif collection_type == 'kids':
-        return [
-            {
-                'title': f'{collection_name} That Spark Imagination: Creative Kids Room Ideas',
-                'description': 'Child development focused decor guide with educational and fun elements',
-                'category': 'Kids Room Decor',
-                'wordCount': '1000-1300',
-                'type': 'creative'
-            },
-            {
-                'title': f'Safe {collection_name} for Kids Bedrooms: Parent\'s Complete Guide',
-                'description': 'Safety-first approach to kids room decoration with peace of mind tips',
-                'category': 'Child Safety',
-                'wordCount': '1100-1400',
-                'type': 'safety'
             }
         ]
     
@@ -315,66 +280,92 @@ def generate_blog_ideas_for_type(collection_type, products, collection_url):
         return [
             {
                 'title': f'Ultimate {collection_name} Guide: Everything You Need to Know (2025)',
-                'description': f'Comprehensive guide covering everything about {collection_name} with expert insights',
+                'description': f'Comprehensive guide covering everything about {collection_name}',
                 'category': 'Complete Guide',
                 'wordCount': '1400-1700',
                 'type': 'guide'
             },
             {
                 'title': f'How to Choose the Perfect {collection_name} for Your Needs',
-                'description': 'Expert selection guide with practical tips and decision framework',
+                'description': 'Expert selection guide with practical tips',
                 'category': 'Buying Guide',
                 'wordCount': '1200-1500',
                 'type': 'howto'
             },
             {
                 'title': f'10 Creative {collection_name} Ideas That Will Inspire You',
-                'description': 'Innovative ideas and creative implementations with visual examples',
+                'description': 'Innovative ideas and creative implementations',
                 'category': 'Creative Ideas',
                 'wordCount': '1000-1300',
                 'type': 'inspiration'
-            },
-            {
-                'title': f'{collection_name} Trends You Need to Know in 2025',
-                'description': 'Latest trends, innovations, and what to expect this year',
-                'category': 'Trends & Innovation',
-                'wordCount': '900-1200',
-                'type': 'trends'
-            },
-            {
-                'title': f'Instagram-Worthy {collection_name} That Get Thousands of Likes',
-                'description': 'Social media optimization guide for maximum engagement and shares',
-                'category': 'Social Media',
-                'wordCount': '800-1100',
-                'type': 'social'
             }
         ]
 
+@app.route('/regenerate_selected_titles', methods=['POST'])
+def regenerate_selected_titles():
+    """Regenerate titles for selected blogs"""
+    try:
+        data = request.json
+        selected_indices = data.get('selected_indices', [])
+        collection_url = data.get('collection_url', '')
+        collection_type = data.get('collection_type', 'business')
+        
+        if not selected_indices:
+            return jsonify({'success': False, 'error': 'No blogs selected'})
+        
+        logger.info(f"Regenerating titles for {len(selected_indices)} blogs")
+        
+        # Generate new ideas
+        blog_ideas = generate_blog_ideas_for_type(collection_type, [], collection_url)
+        
+        # Return new titles for selected indices
+        new_titles = {}
+        for i, index in enumerate(selected_indices):
+            if i < len(blog_ideas):
+                new_titles[str(index)] = {
+                    'title': blog_ideas[i]['title'],
+                    'description': blog_ideas[i]['description']
+                }
+        
+        return jsonify({
+            'success': True,
+            'new_titles': new_titles
+        })
+        
+    except Exception as e:
+        logger.error(f"Title regeneration error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/publish_blog', methods=['POST'])
 def publish_blog():
-    """Publish blog using MODERN Shopify API"""
+    """Publish blog with detailed error tracking"""
     try:
         data = request.json
         idea = data.get('idea')
         collection_url = data.get('collection_url')
         ai_model = data.get('ai_model', 'claude')
         
+        logger.info(f"Starting publication: {idea['title']}")
+        
         # Generate blog content
         blog_html = generate_blog_content(idea, collection_url, ai_model)
         
         if not blog_html or 'generation failed' in blog_html.lower():
-            return jsonify({'success': False, 'error': 'Failed to generate blog content'})
+            logger.error("Content generation failed")
+            return jsonify({'success': False, 'error': 'Failed to generate content'})
+        
+        logger.info(f"Generated content: {len(blog_html)} characters")
         
         # Create slug
         slug = create_slug(idea['title'])
+        logger.info(f"Created slug: {slug}")
         
-        # MODERN SHOPIFY API HEADERS
+        # Prepare Shopify API request
         headers = {
             "X-Shopify-Access-Token": ACCESS_TOKEN,
             "Content-Type": "application/json"
         }
         
-        # Prepare blog data
         blog_data = {
             "article": {
                 "title": idea['title'],
@@ -383,73 +374,84 @@ def publish_blog():
                 "tags": get_smart_tags(idea['title'], idea['category']),
                 "published": True,
                 "handle": slug,
-                "summary": idea['description'][:150] + "...",
-                "metafields": [
-                    {
-                        "key": "title_tag",
-                        "value": f"{idea['title']} | NeonXpert - Premium Neon Signs",
-                        "value_type": "string",
-                        "namespace": "global"
-                    },
-                    {
-                        "key": "description_tag", 
-                        "value": f"{idea['description']} Shop NeonXpert's premium collection today.",
-                        "value_type": "string",
-                        "namespace": "global"
-                    }
-                ]
+                "summary": idea['description'][:150] + "..."
             }
         }
         
-        # Publish to Shopify
+        logger.info(f"Blog data prepared: {blog_data['article']['title']}")
+        
+        # Make API call
         publish_url = f"{SHOP_URL}/blogs/{BLOG_ID}/articles.json"
+        logger.info(f"Publishing to: {publish_url}")
+        
         response = requests.post(publish_url, json=blog_data, headers=headers, timeout=30)
         
+        logger.info(f"Shopify response status: {response.status_code}")
+        logger.info(f"Shopify response: {response.text}")
+        
         if response.status_code == 201:
-            article = response.json()['article']
-            blog_url = f"https://{SHOP_NAME}.myshopify.com/blogs/neon-sign-ideas/{slug}"
+            response_data = response.json()
+            article = response_data.get('article', {})
+            article_id = article.get('id')
+            article_handle = article.get('handle')
             
-            return jsonify({
-                'success': True,
-                'blog_id': article['id'],
-                'blog_url': blog_url,
-                'title': article['title']
-            })
+            if article_id and article_handle:
+                blog_url = f"https://{SHOP_NAME}.myshopify.com/blogs/neon-sign-ideas/{article_handle}"
+                logger.info(f"SUCCESS: Blog published at {blog_url}")
+                
+                return jsonify({
+                    'success': True,
+                    'blog_id': article_id,
+                    'blog_url': blog_url,
+                    'title': article.get('title', idea['title'])
+                })
+            else:
+                logger.error(f"Missing data in response: {response_data}")
+                return jsonify({'success': False, 'error': 'Blog created but missing ID/handle'})
         else:
-            error_msg = f"Shopify API Error {response.status_code}: {response.text[:200]}"
+            error_msg = f"Shopify API Error {response.status_code}"
+            try:
+                error_data = response.json()
+                if 'errors' in error_data:
+                    error_msg += f": {error_data['errors']}"
+                    logger.error(f"Shopify errors: {error_data['errors']}")
+            except:
+                error_msg += f": {response.text[:200]}"
+            
             return jsonify({'success': False, 'error': error_msg})
             
     except Exception as e:
+        logger.error(f"Publishing exception: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': f'Publishing error: {str(e)}'})
 
 def generate_blog_content(idea, collection_url, ai_model):
-    """Generate high-quality blog content using AI"""
+    """Generate natural blog content"""
     
     prompt = f"""
-    Write a comprehensive, SEO-optimized blog post with the title: "{idea['title']}"
+    Write a comprehensive, engaging blog post with the title: "{idea['title']}"
     
     REQUIREMENTS:
     - Category: {idea['category']}
     - Target word count: {idea['wordCount']}
-    - Write for NeonXpert customers and prospects
+    - Write for NeonXpert customers interested in quality neon signs
     - Include internal link to: {collection_url}
     - Include custom neon link: https://neonxpert.com/products/custom-neon-sign
-    - Use proper HTML structure with H2, H3, lists, and paragraphs
-    - Include compelling introduction and strong conclusion with CTA
+    - Use proper HTML structure with H2, H3 headings and paragraphs
     - Write in professional, engaging tone that demonstrates expertise
     - Include practical tips and actionable advice
-    - Add FAQ section for better SEO
-    - Mention "NeonXpert" 3-5 times naturally
+    - Mention "NeonXpert" 4-5 times naturally throughout
+    - End with compelling conclusion and call-to-action
     
     CONTENT GUIDELINES:
-    - Follow E-E-A-T principles (Experience, Expertise, Authoritativeness, Trustworthiness)
-    - Include industry insights and expert knowledge
-    - Use data and statistics where relevant
-    - Write for both humans and search engines
-    - Create scannable content with clear headings
-    - End with strong call-to-action to visit the collection
+    - Focus on Experience, Expertise, Authority, Trust
+    - Include industry insights and real examples
+    - Write for humans, not search engines
+    - Keep tone conversational yet professional
+    - Only add FAQ if it genuinely adds value
     
-    Write as a neon signage expert with deep industry knowledge and customer understanding.
+    Write as a neon signage expert with deep industry knowledge.
+    Make it authentic and helpful, not AI-generated sounding.
     """
     
     try:
@@ -458,7 +460,6 @@ def generate_blog_content(idea, collection_url, ai_model):
             if claude_client is None:
                 claude_client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
             
-            # Try latest Claude models
             models = ["claude-3-5-sonnet-20241022", "claude-3-sonnet-20240229"]
             
             for model in models:
@@ -469,9 +470,11 @@ def generate_blog_content(idea, collection_url, ai_model):
                         temperature=0.7,
                         messages=[{"role": "user", "content": prompt}]
                     )
-                    return response.content[0].text
+                    content = response.content[0].text
+                    logger.info(f"Content generated with Claude {model}")
+                    return content
                 except Exception as e:
-                    print(f"Claude model {model} failed: {e}")
+                    logger.warning(f"Claude {model} failed: {e}")
                     continue
                     
         else:  # ChatGPT
@@ -485,28 +488,29 @@ def generate_blog_content(idea, collection_url, ai_model):
                 max_tokens=4000,
                 temperature=0.7
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            logger.info("Content generated with GPT-4o")
+            return content
             
     except Exception as e:
-        print(f"AI generation error: {e}")
+        logger.error(f"AI generation error: {e}")
         
-    return f"<h2>Error generating content</h2><p>Please check your API configuration and try again.</p>"
+    return f"<h2>Content generation temporarily unavailable</h2><p>Please try again.</p>"
 
 def create_slug(title):
     """Create SEO-friendly URL slug"""
     import re
     slug = title.lower()
-    slug = re.sub(r'[^\w\s-]', '', slug)  # Remove special chars
-    slug = re.sub(r'[-\s]+', '-', slug)   # Replace spaces/hyphens
-    return slug.strip('-')[:50]           # Limit length
+    slug = re.sub(r'[^\w\s-]', '', slug)
+    slug = re.sub(r'[-\s]+', '-', slug)
+    return slug.strip('-')[:50]
 
 def get_smart_tags(title, category):
-    """Generate relevant tags for SEO and organization"""
+    """Generate relevant tags"""
     tags = ["AutoBlog", category, "NeonXpert", "2025"]
     
     title_lower = title.lower()
     
-    # Add contextual tags
     if any(word in title_lower for word in ["business", "commercial", "store"]):
         tags.append("Business Signs")
     if any(word in title_lower for word in ["wedding", "marriage", "bride"]):
@@ -515,10 +519,6 @@ def get_smart_tags(title, category):
         tags.append("Home Decor")
     if any(word in title_lower for word in ["open", "entrance", "welcome"]):
         tags.append("Open Signs")
-    if any(word in title_lower for word in ["instagram", "social", "viral"]):
-        tags.append("Social Media")
-    if any(word in title_lower for word in ["diy", "custom", "personalized"]):
-        tags.append("Custom Signs")
     
     return ", ".join(tags)
 
