@@ -23,10 +23,6 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# API Clients
-claude_client = None
-openai_client = None
-
 # Shopify Config
 SHOP_NAME = os.getenv("SHOP_NAME")
 ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
@@ -423,7 +419,7 @@ def generate_subcategory_blog_ideas(subcategory, products, collection_url):
             'type': subcategory,
             'subcategory': category_name,
             'focus_keyword': template['focus_keyword'],
-            'featured_image': featured_product['image_url'] if featured_product else '',
+            'featured_image': featured_product['image_url'] if featured_product and featured_product['image_url'] else '',
             'featured_product': featured_product,
             'related_products': products[:5]  # Top 5 products for content
         })
@@ -457,7 +453,7 @@ def generate_preview():
 
 @app.route('/publish_blog', methods=['POST'])
 def publish_blog():
-    """Publish blog with proper error handling"""
+    """Publish blog with proper error handling and image integration"""
     try:
         data = request.json
         idea = data.get('idea')
@@ -491,15 +487,7 @@ def publish_blog():
             "Content-Type": "application/json"
         }
         
-        # Upload featured image to Shopify if available
-        featured_image_id = None
-        if idea.get('featured_image'):
-            try:
-                featured_image_id = upload_featured_image(idea['featured_image'], idea['title'])
-                logger.info(f"Featured image uploaded: {featured_image_id}")
-            except Exception as e:
-                logger.warning(f"Featured image upload failed: {e}")
-        
+        # Prepare blog data with featured image
         blog_data = {
             "article": {
                 "title": idea['title'],
@@ -509,13 +497,17 @@ def publish_blog():
                 "published": True,
                 "handle": slug,
                 "summary": idea['description'][:160],
-                "image": {"attachment": idea.get('featured_image')} if idea.get('featured_image') else None
             }
         }
         
-        # Remove None image if no featured image
-        if not blog_data["article"]["image"]:
-            del blog_data["article"]["image"]
+        # Add featured image if available
+        if idea.get('featured_image'):
+            # For Shopify, we'll include the image in the content and as attachment
+            logger.info(f"Adding featured image: {idea['featured_image']}")
+            blog_data["article"]["image"] = {
+                "src": idea['featured_image'],
+                "alt": idea['title']
+            }
         
         publish_url = f"{SHOP_URL}/blogs/{BLOG_ID}/articles.json"
         response = requests.post(publish_url, json=blog_data, headers=headers, timeout=45)
@@ -550,27 +542,8 @@ def publish_blog():
         logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)})
 
-def upload_featured_image(image_url, alt_text):
-    """Upload featured image to Shopify"""
-    if not image_url:
-        return None
-        
-    try:
-        # Download image
-        img_response = requests.get(image_url, timeout=10)
-        if img_response.status_code != 200:
-            return None
-            
-        # Upload to Shopify assets (simplified approach)
-        # Note: This would need proper implementation based on Shopify's image API
-        return None
-        
-    except Exception as e:
-        logger.warning(f"Image upload failed: {e}")
-        return None
-
 def generate_professional_blog_content(idea, collection_url, ai_model):
-    """Generate high-quality, human-like, SEO and LLM optimized content"""
+    """Generate high-quality, human-like, SEO and LLM optimized content with images"""
     
     # Build comprehensive context
     related_products = idea.get('related_products', [])
@@ -638,52 +611,72 @@ Remember: Write like a human expert sharing genuine knowledge, not like AI gener
         content = None
         
         if ai_model == 'claude':
-            global claude_client
-            if claude_client is None:
-                claude_client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-            
-            models = ["claude-3-5-sonnet-20241022", "claude-3-sonnet-20240229"]
-            
-            for model in models:
+            # FIXED: Proper Anthropic client initialization
+            try:
+                anthropic_client = anthropic.Anthropic(
+                    api_key=os.getenv('ANTHROPIC_API_KEY')
+                )
+                
+                response = anthropic_client.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=4000,
+                    temperature=0.6,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                content = response.content[0].text
+                logger.info("Content generated with Claude 3.5 Sonnet")
+                
+            except Exception as claude_error:
+                logger.warning(f"Claude failed: {claude_error}")
+                # Fallback to older model
                 try:
-                    response = claude_client.messages.create(
-                        model=model,
+                    response = anthropic_client.messages.create(
+                        model="claude-3-sonnet-20240229",
                         max_tokens=4000,
-                        temperature=0.6,  # Slightly lower for more professional tone
+                        temperature=0.6,
                         messages=[{"role": "user", "content": prompt}]
                     )
                     content = response.content[0].text
-                    logger.info(f"Content generated with Claude {model}")
-                    break
+                    logger.info("Content generated with Claude 3 Sonnet")
                 except Exception as e:
-                    logger.warning(f"Claude {model} failed: {e}")
-                    continue
+                    logger.error(f"All Claude models failed: {e}")
+                    raise Exception(f"Claude API failed: {str(e)}")
                     
         else:  # ChatGPT
-            global openai_client
-            if openai_client is None:
+            try:
                 openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-            
-            response = openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=4000,
-                temperature=0.6
-            )
-            content = response.choices[0].message.content
-            logger.info("Content generated with GPT-4o")
+                
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=4000,
+                    temperature=0.6
+                )
+                content = response.choices[0].message.content
+                logger.info("Content generated with GPT-4o")
+            except Exception as e:
+                logger.error(f"OpenAI failed: {e}")
+                raise Exception(f"OpenAI API failed: {str(e)}")
         
         # CRITICAL: Validate content was actually generated
         if not content or len(content.strip()) < 200:
             raise Exception("AI returned insufficient content")
-            
-        # Add featured image if available
+        
+        # Add featured image in content if available
         if idea.get('featured_image'):
-            image_html = f'<img src="{idea["featured_image"]}" alt="{idea["title"]}" style="width:100%;max-width:600px;margin:20px 0;border-radius:8px;">'
+            image_html = f'''
+            <div style="text-align: center; margin: 30px 0;">
+                <img src="{idea['featured_image']}" alt="{idea['title']}" style="width:100%;max-width:600px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+                <p style="font-size:14px;color:#666;margin-top:10px;font-style:italic;">Featured: {idea.get('featured_product', {}).get('title', 'NeonXpert Open Sign')}</p>
+            </div>
+            '''
             # Insert image after first paragraph
             paragraphs = content.split('</p>')
             if len(paragraphs) > 1:
                 content = paragraphs[0] + '</p>' + image_html + '</p>'.join(paragraphs[1:])
+            else:
+                # If no paragraphs found, add image after first heading
+                content = content.replace('</h2>', '</h2>' + image_html, 1)
         
         return content
         
