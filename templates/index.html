@@ -5,22 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeonXpert Blog Generator</title>
     <style>
-        body { background-color: #6a1b9a; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 8px; }
-        .section { background: #424242; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        h1 { color: #bb86fc; text-align: center; }
-        h2 { color: #03dac6; }
-        label { display: block; margin-top: 10px; color: #bb86fc; }
+        body { background: linear-gradient(to bottom, #4a148c, #311b92); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .section { background: rgba(66, 66, 66, 0.8); padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        h1 { color: #bb86fc; font-size: 2em; }
+        h2 { color: #03dac6; font-size: 1.5em; }
+        label { display: block; margin-top: 10px; color: #bb86fc; font-weight: bold; }
         input, select { width: 100%; padding: 10px; margin-top: 5px; background: #212121; color: white; border: 1px solid #bb86fc; border-radius: 4px; }
-        button { background: linear-gradient(90deg, #03dac6, #bb86fc); color: black; padding: 10px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+        .drop-zone { border: 2px dashed #bb86fc; padding: 20px; text-align: center; color: #bb86fc; cursor: pointer; }
+        button { background: linear-gradient(90deg, #03dac6, #bb86fc); color: black; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold; }
         button:hover { opacity: 0.9; }
         .topic-list { margin-top: 20px; }
-        .topic { background: #616161; padding: 10px; margin-bottom: 10px; border-radius: 4px; }
-        .editable-title { width: 80%; background: #212121; color: white; border: 1px solid #bb86fc; }
-        .progress { color: #03dac6; text-align: center; }
+        .topic { background: #616161; padding: 10px; margin-bottom: 10px; border-radius: 4px; display: flex; align-items: center; }
+        .editable-title { width: 70%; background: #212121; color: white; border: 1px solid #bb86fc; padding: 5px; margin-left: 10px; }
+        .progress { color: #03dac6; text-align: center; font-style: italic; }
     </style>
     <script>
-        let topics = [];  // Global for editing
+        let topics = [];  # Global for editing
 
         function generateTopics() {
             const formData = new FormData();
@@ -63,9 +65,8 @@
         }
 
         function regenerateSelected() {
-            // Logic to regen only checked; for simplicity, alert and regen all with note
-            alert('Regenerating selected topics...');
-            generateTopics();  // Expand as needed
+            alert('Regenerating selected...');
+            generateTopics();  // Placeholder; can expand
         }
 
         function publishSelected() {
@@ -74,7 +75,7 @@
                 const index = checkbox.id.split('-')[1];
                 selected.push(topics[index]);
             });
-            if (selected.length === 0) return alert('Select topics to publish');
+            if (selected.length === 0) return alert('Select topics');
             
             document.getElementById('progress').innerText = 'Publishing...';
             
@@ -87,11 +88,11 @@
                         collection_url: document.getElementById('collection_url').value,
                         secondary_url: document.getElementById('secondary_url').value,
                         ai_model: document.getElementById('ai_model').value,
-                        product_data: []  // Pass full data; assume from gen
+                        product_data: []  // Assume frontend stores; in practice, persist from gen
                     })
                 }).then(response => response.json()).then(data => {
                     if (data.success) {
-                        document.getElementById('progress').innerText += `\nBlog ${i+1} published: ${data.blog_url}`;
+                        document.getElementById('progress').innerText += `\nBlog ${i+1}: ${data.blog_url}`;
                     } else {
                         alert(data.error);
                     }
@@ -102,12 +103,19 @@
 </head>
 <body>
     <div class="container">
-        <h1>NeonXpert Blog Generator</h1>
+        <div class="header">
+            <h1>NeonXpert Blog Generator</h1>
+            <p>Premium Content Automation</p>
+        </div>
+        
         <div class="section">
             <h2>1. Configuration</h2>
             <label>Product CSV File</label>
-            <input type="file" id="csv_file">
-            <p>Supports CSV up to 10MB</p>
+            <div class="drop-zone" onclick="document.getElementById('csv_file').click()">
+                Drop your CSV file here or click to browse
+                <input type="file" id="csv_file" style="display: none;">
+            </div>
+            <p>Supports CSV files up to 10MB</p>
             
             <label>Collection URL</label>
             <input type="text" id="collection_url">
@@ -117,22 +125,22 @@
             
             <label>AI Model</label>
             <select id="ai_model">
-                <option value="claude">Claude (Anthropic AI)</option>
-                <option value="chatgpt">ChatGPT (OpenAI)</option>
+                <option value="claude">Claude</option>
+                <option value="chatgpt">ChatGPT</option>
             </select>
             
-            <button onclick="generateTopics()">Generate Topics</button>
+            <button onclick="generateTopics()">Generate Blog Ideas</button>
         </div>
         
         <div class="section">
-            <h2>2. Select & Edit Topics</h2>
+            <h2>2. Select Blog Ideas</h2>
             <button onclick="regenerateAll()">Regenerate All</button>
             <button onclick="regenerateSelected()">Regenerate Selected</button>
             <div id="topic-list" class="topic-list"></div>
         </div>
         
         <div class="section">
-            <h2>3. Publishing</h2>
+            <h2>3. Publishing Progress</h2>
             <button onclick="publishSelected()">Publish Selected</button>
             <p id="progress" class="progress"></p>
         </div>
