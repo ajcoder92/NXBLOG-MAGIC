@@ -5,19 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeonXpert Blog Generator</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        h1, h2 { text-align: center; }
-        form { display: flex; flex-direction: column; }
-        label { margin-top: 10px; }
-        input, select, button { margin-top: 5px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-        button { background-color: #4CAF50; color: white; cursor: pointer; }
-        button:hover { background-color: #45a049; }
-        .topic-list { margin-top: 20px; }
-        .topic { border-bottom: 1px solid #ddd; padding: 10px 0; }
-        .editable-title { width: 100%; padding: 5px; }
+        body { font-family: 'Arial', sans-serif; background: linear-gradient(135deg, #4b0082, #8a2be2); color: #fff; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 30px; }
+        .logo { font-size: 2em; color: #fff; }
+        .tagline { font-size: 1.2em; color: #ddd; }
+        .section { background: rgba(255,255,255,0.1); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        .section h2 { color: #fff; border-bottom: 2px solid #fff; padding-bottom: 10px; }
+        label { display: block; margin-top: 10px; color: #ddd; }
+        input, select { width: 100%; padding: 10px; margin-top: 5px; border: none; border-radius: 5px; background: rgba(255,255,255,0.2); color: #fff; }
+        button { background: linear-gradient(135deg, #9370db, #4b0082); color: #fff; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px; }
+        button:hover { opacity: 0.9; }
+        .topic-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .topic-card { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; }
+        .editable-title { background: transparent; border: 1px solid #ddd; color: #fff; width: 100%; }
+        .progress { text-align: center; color: #ddd; }
     </style>
     <script>
+        let topics = [];  // Global for editing
+
         function generateTopics() {
             const formData = new FormData();
             formData.append('csv_file', document.getElementById('csv_file').files[0]);
@@ -30,86 +36,17 @@
                 body: formData
             }).then(response => response.json()).then(data => {
                 if (data.success) {
-                    displayTopics(data.topics);
+                    topics = data.topics;
+                    displayTopics();
                 } else {
                     alert(data.error);
                 }
             });
         }
 
-        function displayTopics(topics) {
+        function displayTopics() {
             const list = document.getElementById('topic-list');
             list.innerHTML = '';
             topics.forEach((topic, index) => {
-                const div = document.createElement('div');
-                div.className = 'topic';
-                div.innerHTML = `
-                    <input type="checkbox" id="topic-${index}">
-                    <input type="text" class="editable-title" value="${topic.title}" onchange="updateTitle(${index}, this.value)">
-                    <p>${topic.description}</p>
-                    <p>Category: ${topic.category} | Type: ${topic.type} | Word Count: ${topic.wordCount}</p>
-                `;
-                list.appendChild(div);
-            });
-        }
-
-        function updateTitle(index, newTitle) {
-            // Logic to update in frontend data; on publish, send edited titles
-            console.log(`Updated title ${index} to ${newTitle}`);
-        }
-
-        function regenerateTopics() {
-            // Similar to generate, but with optional feedback
-            generateTopics();  // Placeholder; expand for feedback if needed
-        }
-
-        function publishSelected() {
-            const selected = [];
-            document.querySelectorAll('.topic input[type="checkbox"]:checked').forEach(checkbox => {
-                const index = checkbox.id.split('-')[1];
-                const titleInput = checkbox.nextElementSibling.nextElementSibling;  // Adjust based on DOM
-                selected.push({ ...topics[index], title: titleInput.value });  // Assume global topics var
-            });
-            // Send to /publish_blog (batch or loop)
-            selected.forEach(topic => {
-                fetch('/publish_blog', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({topic, collection_url: '...', secondary_url: '...', ai_model: '...', product_data: '...'})
-                }).then(response => response.json()).then(data => {
-                    // Handle success/error
-                });
-            });
-        }
-    </script>
-</head>
-<body>
-    <div class="container">
-        <h1>NeonXpert Blog Generator</h1>
-        <h2>Configuration</h2>
-        <form>
-            <label>Product CSV File</label>
-            <input type="file" id="csv_file">
-            
-            <label>Collection URL</label>
-            <input type="text" id="collection_url">
-            
-            <label>Secondary URL (Optional, e.g., Custom Neon Sign)</label>
-            <input type="text" id="secondary_url">
-            
-            <label>AI Model</label>
-            <select id="ai_model">
-                <option value="claude">Claude</option>
-                <option value="chatgpt">ChatGPT</option>
-            </select>
-            
-            <button type="button" onclick="generateTopics()">Generate Topics</button>
-        </form>
-        
-        <h2>Topics</h2>
-        <div id="topic-list" class="topic-list"></div>
-        <button onclick="regenerateTopics()">Regenerate All</button>
-        <button onclick="publishSelected()">Publish Selected</button>
-    </div>
-</body>
-</html>
+                const card = document.createElement('div');
+                card.className
