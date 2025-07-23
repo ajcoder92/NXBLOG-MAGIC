@@ -140,6 +140,8 @@ def generate_ai_topics(product_data_json, collection_url, secondary_url, ai_mode
     secondary_prompt = f"Include 1-2 natural links to {secondary_url} if provided." if secondary_url else ""
     
     prompt = f"""
+    Output ONLY a valid JSON array of topics, no additional text or explanations. Example: [{{"title": "Example", ...}}]
+    
     Analyze this NeonXpert product data from the {collection_name} collection: {product_data_json}
     
     Requirements:
@@ -161,8 +163,12 @@ def generate_ai_topics(product_data_json, collection_url, secondary_url, ai_mode
             max_tokens=8000,
             messages=[{"role": "user", "content": prompt}]
         )
-        return json.loads(response.content[0].text)  # AI outputs JSON list
-    
+        # Clean and parse
+        response_text = response.content[0].text.strip()
+        if response_text.startswith('[') and response_text.endswith(']'):
+            return json.loads(response_text)
+        else:
+            return json.loads('[' + response_text + ']')  # Fallback if not array
     else:
         global openai_client
         if openai_client is None:
@@ -174,7 +180,11 @@ def generate_ai_topics(product_data_json, collection_url, secondary_url, ai_mode
             max_tokens=8000,
             temperature=0.7
         )
-        return json.loads(response.choices[0].message.content)
+        response_text = response.choices[0].message.content.strip()
+        if response_text.startswith('[') and response_text.endswith(']'):
+            return json.loads(response_text)
+        else:
+            return json.loads('[' + response_text + ']')  # Fallback
 
 @app.route('/publish_blog', methods=['POST'])
 def publish_blog():
