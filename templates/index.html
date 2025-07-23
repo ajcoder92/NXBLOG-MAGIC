@@ -5,21 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeonXpert Blog Generator</title>
     <style>
-        body { font-family: 'Arial', sans-serif; background: linear-gradient(135deg, #4b0082, #8a2be2); color: #fff; margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        header { text-align: center; margin-bottom: 30px; }
-        .logo { font-size: 2em; color: #fff; }
-        .tagline { font-size: 1.2em; color: #ddd; }
-        .section { background: rgba(255,255,255,0.1); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
-        .section h2 { color: #fff; border-bottom: 2px solid #fff; padding-bottom: 10px; }
-        label { display: block; margin-top: 10px; color: #ddd; }
-        input, select { width: 100%; padding: 10px; margin-top: 5px; border: none; border-radius: 5px; background: rgba(255,255,255,0.2); color: #fff; }
-        button { background: linear-gradient(135deg, #9370db, #4b0082); color: #fff; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px; }
+        body { background-color: #6a1b9a; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 8px; }
+        .section { background: #424242; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        h1 { color: #bb86fc; text-align: center; }
+        h2 { color: #03dac6; }
+        label { display: block; margin-top: 10px; color: #bb86fc; }
+        input, select { width: 100%; padding: 10px; margin-top: 5px; background: #212121; color: white; border: 1px solid #bb86fc; border-radius: 4px; }
+        button { background: linear-gradient(90deg, #03dac6, #bb86fc); color: black; padding: 10px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
         button:hover { opacity: 0.9; }
-        .topic-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .topic-card { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; }
-        .editable-title { background: transparent; border: 1px solid #ddd; color: #fff; width: 100%; }
-        .progress { text-align: center; color: #ddd; }
+        .topic-list { margin-top: 20px; }
+        .topic { background: #616161; padding: 10px; margin-bottom: 10px; border-radius: 4px; }
+        .editable-title { width: 80%; background: #212121; color: white; border: 1px solid #bb86fc; }
+        .progress { color: #03dac6; text-align: center; }
     </style>
     <script>
         let topics = [];  // Global for editing
@@ -48,5 +46,96 @@
             const list = document.getElementById('topic-list');
             list.innerHTML = '';
             topics.forEach((topic, index) => {
-                const card = document.createElement('div');
-                card.className
+                const div = document.createElement('div');
+                div.className = 'topic';
+                div.innerHTML = `
+                    <input type="checkbox" id="topic-${index}">
+                    <input type="text" class="editable-title" value="${topic.title}" onchange="topics[${index}].title = this.value">
+                    <p>${topic.description}</p>
+                    <p>Category: ${topic.category} | Type: ${topic.type} | Est. Words: ${topic.wordCount}</p>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function regenerateAll() {
+            generateTopics();
+        }
+
+        function regenerateSelected() {
+            // Logic to regen only checked; for simplicity, alert and regen all with note
+            alert('Regenerating selected topics...');
+            generateTopics();  // Expand as needed
+        }
+
+        function publishSelected() {
+            const selected = [];
+            document.querySelectorAll('.topic input[type="checkbox"]:checked').forEach(checkbox => {
+                const index = checkbox.id.split('-')[1];
+                selected.push(topics[index]);
+            });
+            if (selected.length === 0) return alert('Select topics to publish');
+            
+            document.getElementById('progress').innerText = 'Publishing...';
+            
+            selected.forEach((topic, i) => {
+                fetch('/publish_blog', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        topic,
+                        collection_url: document.getElementById('collection_url').value,
+                        secondary_url: document.getElementById('secondary_url').value,
+                        ai_model: document.getElementById('ai_model').value,
+                        product_data: []  // Pass full data; assume from gen
+                    })
+                }).then(response => response.json()).then(data => {
+                    if (data.success) {
+                        document.getElementById('progress').innerText += `\nBlog ${i+1} published: ${data.blog_url}`;
+                    } else {
+                        alert(data.error);
+                    }
+                });
+            });
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>NeonXpert Blog Generator</h1>
+        <div class="section">
+            <h2>1. Configuration</h2>
+            <label>Product CSV File</label>
+            <input type="file" id="csv_file">
+            <p>Supports CSV up to 10MB</p>
+            
+            <label>Collection URL</label>
+            <input type="text" id="collection_url">
+            
+            <label>Secondary URL (Optional)</label>
+            <input type="text" id="secondary_url" placeholder="e.g., https://neonxpert.com/products/custom-neon-sign">
+            
+            <label>AI Model</label>
+            <select id="ai_model">
+                <option value="claude">Claude (Anthropic AI)</option>
+                <option value="chatgpt">ChatGPT (OpenAI)</option>
+            </select>
+            
+            <button onclick="generateTopics()">Generate Topics</button>
+        </div>
+        
+        <div class="section">
+            <h2>2. Select & Edit Topics</h2>
+            <button onclick="regenerateAll()">Regenerate All</button>
+            <button onclick="regenerateSelected()">Regenerate Selected</button>
+            <div id="topic-list" class="topic-list"></div>
+        </div>
+        
+        <div class="section">
+            <h2>3. Publishing</h2>
+            <button onclick="publishSelected()">Publish Selected</button>
+            <p id="progress" class="progress"></p>
+        </div>
+    </div>
+</body>
+</html>
