@@ -555,6 +555,10 @@ def publish_blog():
         # Generate optimized meta description
         meta_description = generate_meta_description(topic, blog_html)
         
+        # Clean title for metafields (ensure single line)
+        clean_title = re.sub(r'[\r\n\t]', ' ', topic['title'])
+        clean_title = re.sub(r'\s+', ' ', clean_title).strip()[:60]
+        
         # Enhanced blog data with full SEO optimization
         blog_data = {
             "article": {
@@ -566,28 +570,29 @@ def publish_blog():
                 "published": True,
                 "handle": slug,
                 "summary": meta_description,  # Optimized meta description
-                "metafields": [
+            }
+        }
+        
+        # Add metafields only if we have valid values (Shopify is picky about these)
+        try:
+            if clean_title and meta_description:
+                blog_data["article"]["metafields"] = [
                     {
                         "key": "title_tag",
-                        "value": topic['title'][:60],  # SEO title limit
+                        "value": str(clean_title),  # Ensure string
                         "type": "single_line_text_field",
                         "namespace": "global"
                     },
                     {
                         "key": "description_tag", 
-                        "value": meta_description,
+                        "value": str(meta_description),  # Ensure string
                         "type": "single_line_text_field",
-                        "namespace": "global"
-                    },
-                    {
-                        "key": "canonical_url",
-                        "value": f"https://{SHOP_NAME}.myshopify.com/blogs/neon-sign-ideas/{slug}",
-                        "type": "url",
                         "namespace": "global"
                     }
                 ]
-            }
-        }
+        except Exception as meta_error:
+            logger.warning(f"Skipping metafields due to error: {meta_error}")
+            # Continue without metafields if they cause issues
         
         # Only add image if upload was successful
         if featured_image_id:
@@ -769,14 +774,16 @@ def create_slug(title):
     return slug
 
 def generate_meta_description(topic, content):
-    """Generate SEO-optimized meta description"""
-    # Extract first paragraph from content for natural description
+    """Generate SEO-optimized meta description - SINGLE LINE ONLY"""
     import re
     
     # Remove HTML tags and get first paragraph
     clean_content = re.sub('<[^<]+?>', '', content)
-    sentences = clean_content.split('.')[:2]  # First 2 sentences
     
+    # Remove all line breaks and extra spaces
+    clean_content = re.sub(r'\s+', ' ', clean_content).strip()
+    
+    sentences = clean_content.split('.')[:2]  # First 2 sentences
     base_description = '. '.join(sentences).strip()
     
     # Ensure it includes key elements and stays under 160 chars
@@ -787,7 +794,11 @@ def generate_meta_description(topic, content):
     if "NeonXpert" not in base_description:
         base_description = f"{base_description} | NeonXpert"
     
-    return base_description[:160]  # Meta description limit
+    # CRITICAL: Ensure single line and remove any problematic characters
+    final_description = re.sub(r'[\r\n\t]', ' ', base_description)
+    final_description = re.sub(r'\s+', ' ', final_description).strip()
+    
+    return final_description[:160]  # Meta description limit
 
 def get_smart_tags(title, category):
     """Enhanced smart tags with SEO optimization"""
