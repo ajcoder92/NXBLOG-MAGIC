@@ -349,24 +349,32 @@ def publish_blog():
         else:
             blog_html = generate_blog_content(topic, collection_url, secondary_url, topic.get('all_products', []), ai_model)
         
-        # Enhanced featured image handling
+        # Enhanced featured image handling with validation
         featured_image_url = None
         if topic.get('relevant_products') and len(topic['relevant_products']) > 0:
             for product in topic['all_products']:
                 if product['handle'] in topic['relevant_products'] and product.get('image_url'):
-                    featured_image_url = product['image_url']
-                    break
+                    # Validate image URL before using
+                    if is_valid_image_url(product['image_url']):
+                        featured_image_url = product['image_url']
+                        break
+                    else:
+                        logger.warning(f"Skipping invalid image URL: {product['image_url']}")
         
+        # Try to upload image, but don't fail the entire blog if it doesn't work
         featured_image_id = None
         if featured_image_url:
             try:
                 featured_image_id = upload_image_to_shopify(featured_image_url)
+                if featured_image_id:
+                    logger.info(f"Successfully uploaded image: {featured_image_url}")
             except Exception as img_error:
-                logger.warning(f"Image upload failed: {img_error}")
+                logger.warning(f"Image upload failed, continuing without image: {img_error}")
+                # Continue without image instead of failing
         
         slug = create_slug(topic['title'])
         
-        # Enhanced blog data with metafields
+        # Enhanced blog data - always create the blog even without image
         blog_data = {
             "article": {
                 "title": topic['title'],
@@ -379,8 +387,12 @@ def publish_blog():
             }
         }
         
+        # Only add image if upload was successful
         if featured_image_id:
             blog_data["article"]["image"] = {"src": featured_image_id}
+            logger.info("Added featured image to blog post")
+        else:
+            logger.info("Publishing blog without featured image")
         
         publish_url = f"{SHOP_URL}/blogs/{BLOG_ID}/articles.json"
         response = requests.post(publish_url, json=blog_data, headers=SHOPIFY_HEADERS, timeout=45)
@@ -437,15 +449,40 @@ def generate_blog_content(topic, collection_url, secondary_url, product_data, ai
         logger.error(f"Content generation failed: {e}")
         raise Exception(f"Content generation failed: {str(e)}")
 
+def is_valid_image_url(image_url):
+    """Check if image URL is accessible before trying to upload"""
+    if not image_url or not image_url.startswith('http'):
+        return False
+    
+    try:
+        # Quick HEAD request to check if URL exists
+        response = requests.head(image_url, timeout=10, allow_redirects=True)
+        return response.status_code == 200
+    except Exception as e:
+        logger.warning(f"Image URL validation failed: {e}")
+        return False
+
 def upload_image_to_shopify(image_url):
     """Keep Grok's image upload with enhanced error handling"""
     if not image_url:
         return None
     
     try:
+        # First check if the image URL is accessible
         image_response = requests.get(image_url, timeout=30)
         if image_response.status_code != 200:
             logger.warning(f"Failed to fetch image: {image_response.status_code}")
+            return None
+        
+        # Check if response contains actual image data
+        if len(image_response.content) < 1000:  # Less than 1KB is probably not an image
+            logger.warning(f"Image response too small: {len(image_response.content)} bytes")
+            return None
+        
+        # Validate content type
+        content_type = image_response.headers.get('content-type', '').lower()
+        if not any(img_type in content_type for img_type in ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']):
+            logger.warning(f"Invalid content type: {content_type}")
             return None
         
         image_data = base64.b64encode(image_response.content).decode('utf-8')
@@ -462,37 +499,72 @@ def upload_image_to_shopify(image_url):
                         value
                     }
                 }
+                userErrors {
+                    field
+                    message
+                }
             }
         }
         """
+        
+        # Determine MIME type based on content
+        mime_type = content_type if content_type.startswith('image/') else 'image/jpeg'
+        
         variables = {
             "input": [{
-                "filename": os.path.basename(image_url),
-                "mimeType": "image/jpeg",
+                "filename": f"neonxpert-{os.path.basename(image_url).split('?')[0]}",  # Remove query params
+                "mimeType": mime_type,
                 "httpMethod": "POST",
                 "resource": "IMAGE"
             }]
         }
         
         response = requests.post(graphql_url, json={"query": query, "variables": variables}, headers=SHOPIFY_HEADERS, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'data' in data and data['data']['stagedUploadsCreate']['stagedTargets']:
-                staged_data = data['data']['stagedUploadsCreate']['stagedTargets'][0]
-                upload_url = staged_data['url']
-                params = {p['name']: p['value'] for p in staged_data['parameters']}
-                
-                files = {'file': (os.path.basename(image_url), image_response.content)}
-                upload_response = requests.post(upload_url, data=params, files=files, timeout=30)
-                
-                if upload_response.status_code in [200, 201]:
-                    return staged_data['resourceUrl']
         
-        logger.warning("Image upload to Shopify failed")
+        if response.status_code != 200:
+            logger.warning(f"GraphQL request failed: {response.status_code}")
+            return None
+            
+        data = response.json()
+        
+        # Check for GraphQL errors
+        if 'errors' in data:
+            logger.warning(f"GraphQL errors: {data['errors']}")
+            return None
+            
+        if 'data' not in data or not data['data']['stagedUploadsCreate']['stagedTargets']:
+            logger.warning(f"No staged targets in response: {data}")
+            return None
+            
+        # Check for user errors
+        user_errors = data['data']['stagedUploadsCreate'].get('userErrors', [])
+        if user_errors:
+            logger.warning(f"User errors: {user_errors}")
+            return None
+            
+        staged_data = data['data']['stagedUploadsCreate']['stagedTargets'][0]
+        upload_url = staged_data['url']
+        params = {p['name']: p['value'] for p in staged_data['parameters']}
+        
+        # Upload the file
+        files = {'file': (variables['input'][0]['filename'], image_response.content, mime_type)}
+        upload_response = requests.post(upload_url, data=params, files=files, timeout=30)
+        
+        if upload_response.status_code in [200, 201]:
+            logger.info(f"Image uploaded successfully: {staged_data['resourceUrl']}")
+            return staged_data['resourceUrl']
+        else:
+            logger.warning(f"File upload failed: {upload_response.status_code} - {upload_response.text}")
+            return None
+        
+        logger.warning("Image upload to Shopify failed - all methods exhausted")
         return None
         
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error during image upload: {e}")
+        return None
     except Exception as e:
-        logger.error(f"Image upload error: {e}")
+        logger.error(f"Unexpected error during image upload: {e}")
         return None
 
 def create_slug(title):
