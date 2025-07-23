@@ -16,95 +16,181 @@
         .drop-zone { border: 2px dashed #bb86fc; padding: 20px; text-align: center; color: #bb86fc; cursor: pointer; }
         button { background: linear-gradient(90deg, #03dac6, #bb86fc); color: black; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold; }
         button:hover { opacity: 0.9; }
+        .subcategory-list { margin-top: 10px; }
+        .subcategory { display: flex; align-items: center; margin-bottom: 5px; }
         .topic-list { margin-top: 20px; }
         .topic { background: #616161; padding: 10px; margin-bottom: 10px; border-radius: 4px; display: flex; align-items: center; }
         .editable-title { width: 70%; background: #212121; color: white; border: 1px solid #bb86fc; padding: 5px; margin-left: 10px; }
+        .preview { background: #424242; padding: 15px; border-radius: 4px; margin-top: 10px; max-height: 300px; overflow-y: auto; }
         .progress { color: #03dac6; text-align: center; font-style: italic; }
     </style>
     <script>
-        let topics = [];  # Global for editing
+        let subcategories = [];
+        let ideas = [];
+
+        function handleFileSelect(event) {
+            const fileInput = document.getElementById('csv_file');
+            const dropZone = document.querySelector('.drop-zone');
+            if (event.type === 'drop') {
+                event.preventDefault();
+                fileInput.files = event.dataTransfer.files;
+            } else if (event.type === 'change' && fileInput.files.length > 0) {
+                dropZone.textContent = `Selected: ${fileInput.files[0].name}`;
+            }
+        }
 
         function generateTopics() {
             const formData = new FormData();
             formData.append('csv_file', document.getElementById('csv_file').files[0]);
-            formData.append('collection_url', document.getElementById('collection_url').value);
-            formData.append('secondary_url', document.getElementById('secondary_url').value);
-            formData.append('ai_model', document.getElementById('ai_model').value);
-
-            fetch('/generate_topics', {
+            fetch('/analyze_csv', {
                 method: 'POST',
                 body: formData
             }).then(response => response.json()).then(data => {
                 if (data.success) {
-                    topics = data.topics;
-                    displayTopics();
+                    subcategories = data.subcategories;
+                    displaySubcategories();
                 } else {
                     alert(data.error);
                 }
             });
         }
 
-        function displayTopics() {
+        function displaySubcategories() {
+            const list = document.getElementById('subcategory-list');
+            list.innerHTML = '';
+            subcategories.forEach(subcat => {
+                const div = document.createElement('div');
+                div.className = 'subcategory';
+                div.innerHTML = `
+                    <input type="checkbox" id="subcat-${subcat.key}" name="subcategory" value="${subcat.key}">
+                    <label for="subcat-${subcat.key}">${subcat.name} (${subcat.count} products, ${subcat.monthly_searches}/month)</label>
+                `;
+                list.appendChild(div);
+            });
+            document.getElementById('generate-ideas').disabled = false;
+        }
+
+        function generateIdeas() {
+            const selected = Array.from(document.querySelectorAll('input[name="subcategory"]:checked')).map(cb => cb.value);
+            if (selected.length === 0) return alert('Select at least one subcategory');
+            
+            const formData = new FormData();
+            formData.append('csv_file', document.getElementById('csv_file').files[0]);
+            formData.append('collection_url', document.getElementById('collection_url').value);
+            formData.append('selected_subcategories', JSON.stringify(selected));
+            
+            fetch('/generate_ideas', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json()).then(data => {
+                if (data.success) {
+                    ideas = data.ideas;
+                    displayIdeas();
+                } else {
+                    alert(data.error);
+                }
+            });
+        }
+
+        function displayIdeas() {
             const list = document.getElementById('topic-list');
             list.innerHTML = '';
-            topics.forEach((topic, index) => {
+            ideas.forEach((idea, index) => {
                 const div = document.createElement('div');
                 div.className = 'topic';
                 div.innerHTML = `
-                    <input type="checkbox" id="topic-${index}">
-                    <input type="text" class="editable-title" value="${topic.title}" onchange="topics[${index}].title = this.value">
-                    <p>${topic.description}</p>
-                    <p>Category: ${topic.category} | Type: ${topic.type} | Est. Words: ${topic.wordCount}</p>
+                    <input type="checkbox" id="idea-${index}">
+                    <input type="text" class="editable-title" value="${idea.title}" onchange="ideas[${index}].title = this.value">
+                    <p>${idea.description}</p>
+                    <p>Subcategory: ${idea.subcategory} | Word count: ${idea.wordCount}</p>
+                    <button onclick="generatePreview(${index})">Generate Preview</button>
                 `;
                 list.appendChild(div);
             });
         }
 
-        function regenerateAll() {
-            generateTopics();
-        }
-
-        function regenerateSelected() {
-            alert('Regenerating selected...');
-            generateTopics();  // Placeholder; can expand
+        function generatePreview(index) {
+            const idea = ideas[index];
+            fetch('/generate_preview', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({idea, collection_url: document.getElementById('collection_url').value, ai_model: document.getElementById('ai_model').value})
+            }).then(response => response.json()).then(data => {
+                if (data.success) {
+                    const div = document.getElementById(`preview-${index}`);
+                    div.innerHTML = `
+                        <div class="preview">
+                            <h3>Preview</h3>
+                            <p>${data.content.substring(0, 500)}...</p>
+                            <img src="${data.featured_image}" alt="${idea.title}" style="max-width: 100%; height: auto;">
+                            <p>Word count: ${data.word_count}</p>
+                        </div>
+                    `;
+                    div.style.display = 'block';
+                } else {
+                    alert(data.error);
+                }
+            });
         }
 
         function publishSelected() {
             const selected = [];
             document.querySelectorAll('.topic input[type="checkbox"]:checked').forEach(checkbox => {
                 const index = checkbox.id.split('-')[1];
-                selected.push(topics[index]);
+                selected.push(ideas[index]);
             });
-            if (selected.length === 0) return alert('Select topics');
+            if (selected.length === 0) return alert('Select ideas to publish');
             
-            document.getElementById('progress').innerText = 'Publishing...';
+            document.getElementById('progress').innerText = 'Publishing blogs...';
+            let published = 0, failed = 0;
             
-            selected.forEach((topic, i) => {
+            selected.forEach((idea, i) => {
                 fetch('/publish_blog', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        topic,
+                        idea,
                         collection_url: document.getElementById('collection_url').value,
-                        secondary_url: document.getElementById('secondary_url').value,
-                        ai_model: document.getElementById('ai_model').value,
-                        product_data: []  // Assume frontend stores; in practice, persist from gen
+                        ai_model: document.getElementById('ai_model').value
                     })
                 }).then(response => response.json()).then(data => {
                     if (data.success) {
-                        document.getElementById('progress').innerText += `\nBlog ${i+1}: ${data.blog_url}`;
+                        published++;
+                        document.getElementById('current').innerText = `Currently processing: Blog ${i+1} (${idea.title})`;
+                        document.getElementById(`published-${i}`).innerText = `View published blog → ${data.blog_url}`;
                     } else {
-                        alert(data.error);
+                        failed++;
+                        document.getElementById(`failed-${i}`).innerText = `Failed: ${data.error}`;
+                    }
+                    if (i === selected.length - 1) {
+                        document.getElementById('progress').innerText = `Publishing Complete! ${published} blogs published successfully. ${failed} failed.`;
                     }
                 });
             });
         }
+
+        // Drag and drop
+        const dropZone = document.querySelector('.drop-zone');
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+        dropZone.addEventListener('drop', handleFileSelect, false);
+        function highlight(e) { dropZone.style.background = '#5e2a9d'; }
+        function unhighlight(e) { dropZone.style.background = 'transparent'; }
     </script>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>NeonXpert Blog Generator</h1>
+            <p>Smart AI Edition</p>
             <p>Premium Content Automation</p>
         </div>
         
@@ -113,7 +199,7 @@
             <label>Product CSV File</label>
             <div class="drop-zone" onclick="document.getElementById('csv_file').click()">
                 Drop your CSV file here or click to browse
-                <input type="file" id="csv_file" style="display: none;">
+                <input type="file" id="csv_file" style="display: none;" onchange="handleFileSelect(event)">
             </div>
             <p>Supports CSV files up to 10MB</p>
             
@@ -125,25 +211,40 @@
             
             <label>AI Model</label>
             <select id="ai_model">
-                <option value="claude">Claude</option>
-                <option value="chatgpt">ChatGPT</option>
+                <option value="claude">Claude 3.5 (Human-like writing)</option>
+                <option value="chatgpt">GPT-4o (SEO optimized)</option>
             </select>
             
-            <button onclick="generateTopics()">Generate Blog Ideas</button>
+            <button onclick="generateTopics()">Validate Collection</button>
+            <button id="generate-ideas" onclick="generateIdeas()" disabled>Generate Blog Ideas</button>
         </div>
         
         <div class="section">
-            <h2>2. Select Blog Ideas</h2>
-            <button onclick="regenerateAll()">Regenerate All</button>
-            <button onclick="regenerateSelected()">Regenerate Selected</button>
+            <h2>2. Select Content Categories</h2>
+            <p>Based on SEO keyword research</p>
+            <div id="subcategory-list" class="subcategory-list"></div>
+        </div>
+        
+        <div class="section">
+            <h2>3. Review & Publish</h2>
+            <button onclick="selectAll()">Select All</button>
+            <button onclick="deselectAll()">Deselect All</button>
             <div id="topic-list" class="topic-list"></div>
+            <button onclick="publishSelected()">Publish Selected (0)</button>
         </div>
         
         <div class="section">
-            <h2>3. Publishing Progress</h2>
-            <button onclick="publishSelected()">Publish Selected</button>
-            <p id="progress" class="progress"></p>
+            <h2>4. Publishing Progress</h2>
+            <p id="progress">Publishing blogs...</p>
+            <p id="current">Currently processing:</p>
+            <div id="published-list"></div>
+            <p>Publishing Complete!</p>
+            <p id="summary"></p>
         </div>
     </div>
+    <script>
+        function selectAll() { document.querySelectorAll('.topic input[type="checkbox"]').forEach(cb => cb.checked = true); }
+        function deselectAll() { document.querySelectorAll('.topic input[type="checkbox"]').forEach(cb => cb.checked = false); }
+    </script>
 </body>
 </html>
