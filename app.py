@@ -419,24 +419,78 @@ def publish_blog():
         return jsonify({'success': False, 'error': str(e)})
 
 def generate_blog_content(topic, collection_url, secondary_url, product_data, ai_model):
-    """Keep Grok's excellent content generation with enhanced error handling"""
+    """Enhanced Grok content generation with professional output"""
     product_json = json.dumps(product_data)
     
     secondary_prompt = f"Include 1-2 natural links to {secondary_url} (e.g., 'Customize at NeonXpert's custom neon sign page') if provided." if secondary_url else ""
     
-    # Keep Grok's excellent prompt
-    prompt = f"""
-    Write a high-quality blog post titled: "{topic['title']}"
+    # Get current year dynamically
+    import datetime
+    current_year = datetime.datetime.now().year
     
-    Requirements:
-    - Word count: Dynamic (800-3000 based on scope; e.g., shorter for niche, longer for guides).
-    - Use product data: {product_json} – Mention relevant NeonXpert products naturally with links (e.g., <a href="https://neonxpert.com/products/{'{handle}'}">{'{title}'}</a>); no prices unless topic is price-focused.
-    - Embed images: For listicles, add <img src="{'{image_url}'}" alt="NeonXpert {'{title}'} - optimized keyword" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" /> after items. Featured: First product.
-    - Structure: HTML with h2/h3, short paragraphs, bullets/lists for tips; value bombs (e.g., pro tips, stats like 'signs boost traffic 15-30% per studies').
-    - Tone: Engaging NeonXpert expert; 5-7 mentions.
-    - Interlinks: After writing, embed naturally: 2-3 to {collection_url} (e.g., 'Explore NeonXpert's open neon sign collection'); {secondary_prompt}.
-    - Factual: Use real stats (e.g., 'Illuminated signs increase walk-ins by 15% – Sign Research 2025'); optional FAQ if natural.
-    - Optimize: Keywords in headings; modular for LLMs.
+    # COMPLETELY REWRITTEN PROMPT for professional output
+    prompt = f"""
+    You are writing a FINAL, PUBLISHED blog article for NeonXpert's website. This will go live immediately.
+    
+    ARTICLE TITLE: {topic['title']}
+    
+    CRITICAL REQUIREMENTS:
+    1. Write FINAL content ready for immediate publication - NO "draft" language, NO "here's a blog post" preamble
+    2. Use {current_year} as the current year throughout the article
+    3. Start immediately with an engaging opening paragraph
+    4. Structure with proper HTML formatting: <h2>, <h3>, <p>, <ul>, <li>, <blockquote>
+    5. Include NeonXpert product mentions with proper links: <a href="https://neonxpert.com/products/{{handle}}">{{title}}</a>
+    6. Add product images within content: <img src="{{image_url}}" alt="NeonXpert {{title}}" style="width:100%;max-width:600px;height:auto;display:block;margin:20px auto;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,0.1);">
+    
+    CONTENT STRUCTURE:
+    - Opening paragraph (hook + overview)
+    - 3-4 main sections with <h2> headings
+    - Include <h3> subheadings where appropriate
+    - Use <blockquote> for expert tips or key insights
+    - Add <ul>/<li> for actionable lists
+    - Professional conclusion with call-to-action
+    
+    PRODUCT INTEGRATION:
+    Products to feature: {product_json}
+    - Mention products naturally within content flow
+    - Add product links using format: <a href="https://neonxpert.com/products/{{handle}}">{{title}}</a>
+    - Include product images at relevant points in the article
+    - NO price mentions unless topic is price-focused
+    
+    BRANDING & LINKS:
+    - Mention "NeonXpert" 5-7 times naturally
+    - Include 2-3 links to collection: {collection_url}
+    - {secondary_prompt}
+    
+    TONE & STYLE:
+    - Professional yet approachable
+    - Expert authority (like you've been in neon signage industry for years)
+    - Include relevant statistics and insights
+    - Write for business owners and home decorators
+    - SEO-optimized with keywords in headings
+    
+    FORMATTING EXAMPLES:
+    <h2>Why [Topic] Matters in {current_year}</h2>
+    <p>Opening paragraph with engaging hook...</p>
+    
+    <h3>Key Benefits</h3>
+    <ul>
+    <li>Benefit one with specific details</li>
+    <li>Benefit two with real examples</li>
+    </ul>
+    
+    <blockquote>
+    <p><strong>Expert Tip:</strong> Professional insight here that adds real value.</p>
+    </blockquote>
+    
+    <img src="{{product_image}}" alt="NeonXpert {{product_name}}" style="width:100%;max-width:600px;height:auto;display:block;margin:20px auto;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,0.1);">
+    
+    IMPORTANT: 
+    - Write FINAL publishable content only
+    - NO meta-commentary about the article
+    - Start with the actual content immediately
+    - End with a strong call-to-action
+    - Use current year ({current_year}) consistently
     """
     
     try:
