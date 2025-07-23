@@ -130,7 +130,7 @@ def generate_topics():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         csv_file.save(filepath)
         
-        # Extract unique products (first row per handle) - Keep Grok's logic
+        # Extract unique products (ONLY first row per handle with actual data)
         unique_products = {}
         
         try:
@@ -142,15 +142,27 @@ def generate_topics():
                 reader = csv.DictReader(csvfile, delimiter=delimiter)
                 
                 for row in reader:
-                    handle = row.get('Handle', '')
-                    if handle and handle not in unique_products:
+                    handle = row.get('Handle', '').strip()
+                    title = row.get('Title', '').strip()
+                    
+                    # STRICT FILTERING: Only process rows with both handle AND title
+                    # This eliminates variant rows that have handle but empty title
+                    if handle and title and handle not in unique_products:
+                        body = row.get('Body (HTML)', '').strip()
+                        tags = row.get('Tags', '').strip()
+                        
+                        # Skip if this looks like a variant row (has handle but no meaningful content)
+                        if len(title) < 5:  # Skip very short/empty titles
+                            continue
+                            
                         unique_products[handle] = {
                             'handle': handle,
-                            'title': row.get('Title', ''),
-                            'body': row.get('Body (HTML)', ''),
-                            'tags': row.get('Tags', ''),
-                            'image_url': row.get('Image Src', '') or row.get('Variant Image', ''),
-                            'price': row.get('Variant Price', '')
+                            'title': title,
+                            'body': body,  # This is the description
+                            'tags': tags,
+                            'image_url': row.get('Image Src', '').strip() or row.get('Variant Image', '').strip(),
+                            'price': row.get('Variant Price', ''),
+                            'theme': row.get('Theme (product.metafields.shopify.theme)', '').strip()
                         }
         except Exception as csv_error:
             logger.error(f"CSV parsing error: {csv_error}")
@@ -158,6 +170,11 @@ def generate_topics():
         
         if not unique_products:
             return jsonify({'success': False, 'error': 'No valid products found in CSV'})
+        
+        # Debug logging to see what products were extracted
+        logger.info(f"Extracted {len(unique_products)} unique products:")
+        for handle, product in list(unique_products.items())[:5]:  # Log first 5 products
+            logger.info(f"- {handle}: {product['title'][:50]}...")
         
         product_data_json = json.dumps(list(unique_products.values()))
         
@@ -197,22 +214,38 @@ def generate_ai_topics(product_data_json, collection_url, secondary_url, ai_mode
     # Get current year dynamically
     current_year = datetime.datetime.now().year
     
-    # Enhanced prompt with current year - STILL AI GENERATION, NOT TEMPLATES
+    # Enhanced prompt focused on ACTUAL product analysis
     prompt = f"""
-    Analyze this NeonXpert product data from the {collection_name} collection: {product_data_json}
+    Analyze this REAL NeonXpert product data from the {collection_name} collection: {product_data_json}
     
-    Requirements:
-    - Use {current_year} as the current year in all titles and descriptions
-    - Identify subcategories/clusters from tags/titles (e.g., industries like coffee shops, dispensaries; intents like funny, budget).
-    - Infer a keyword pool like Google autocomplete (e.g., 'neon open signs for cafes {current_year}', 'custom neon open signs weed').
-    - Generate a dynamic number of unique blog topics/titles based on scope (e.g., 2-5 for small, 20+ for large with 100+ products; 1-2 pillars + cluster-specific).
-    - Each topic: {{"title": "SEO-optimized title with NeonXpert mention using {current_year}", "description": "Brief summary", "category": "e.g., How-To", "wordCount": "Dynamic: 800-3000 based on scope", "type": "e.g., listicle", "relevant_products": [list of handles for links/images]}}
-    - Variety: Mix listicles, guides, trends; avoid repetition.
-    - Value: Practical, data-backed (use real stats like 'signs boost traffic 15-30% per studies').
+    TASK: Create blog topics based on the ACTUAL products provided.
+    
+    ANALYSIS REQUIREMENTS:
+    1. Look at the actual product TITLES and DESCRIPTIONS in the data
+    2. Identify common THEMES from the product names (e.g., if you see "Rainbow Heart", "Pride Flag", "Love Wins" - the theme is LGBTQ pride)
+    3. Group products by their actual characteristics (colors, designs, messages, room types)
+    4. Create topics that would help customers choose between these SPECIFIC products
+    
+    TOPIC CREATION RULES:
+    1. Use {current_year} as the current year in all titles
+    2. Base topics on the actual product names and themes you see in the data
+    3. Create 3-8 topics depending on product variety (more products = more topics)
+    4. Focus on helping customers understand THESE specific products
+    5. Each topic should feature 3-5 specific products from the data
+    
+    TOPIC FORMAT:
+    {{"title": "Descriptive title using {current_year} that helps customers choose from your actual products", "description": "Brief summary of what this topic covers", "category": "Guide/Showcase/Comparison", "wordCount": "1200-2000", "type": "guide/showcase/comparison", "relevant_products": [list of 3-5 actual product handles from the data]}}
+    
+    EXAMPLE ANALYSIS:
+    If your data contains products like "Rainbow Heart Neon Sign", "Pride Flag LED Display", "Love Wins Neon Art":
+    - Theme: LGBTQ Pride celebration
+    - Possible topics: "Best LGBTQ Pride Neon Signs for Home Decor in {current_year}", "Rainbow vs Multi-Color: Choosing Pride Neon Signs", "Small vs Large: Pride Neon Signs for Every Space"
     
     CRITICAL: 
-    - Use {current_year} consistently in titles and descriptions
-    - Return ONLY a valid JSON array. No extra text, no markdown formatting, just the JSON array.
+    - Analyze the ACTUAL product titles in the data provided
+    - Create topics that showcase THESE specific products
+    - Use {current_year} in titles
+    - Return ONLY a valid JSON array, no extra text
     """
     
     try:
@@ -303,7 +336,7 @@ def parse_ai_json_response(content):
         # If all fails, create a fallback response
         logger.warning("Creating fallback topic due to JSON parsing failure")
         return [{
-            "title": "Professional Neon Signs That Transform Your Business",
+            "title": f"Professional Neon Signs That Transform Your Business {datetime.datetime.now().year}",
             "description": "Comprehensive guide to choosing the right neon signage for your business",
             "category": "Business Guide",
             "wordCount": "1500-2000",
@@ -337,7 +370,7 @@ def generate_preview():
         return jsonify({'success': False, 'error': f'Preview generation failed: {str(e)}'})
 
 def generate_blog_content(topic, collection_url, secondary_url, product_data, ai_model):
-    """Enhanced content generation with Rich Schema and LLM optimization - STILL AI GENERATED!"""
+    """Enhanced content generation focused on REAL product data - NO FAKE STATISTICS!"""
     product_json = json.dumps(product_data)
     
     secondary_prompt = f"Include 1-2 natural links to {secondary_url} (e.g., 'Customize at NeonXpert's custom neon sign page') if provided." if secondary_url else ""
@@ -347,74 +380,66 @@ def generate_blog_content(topic, collection_url, secondary_url, product_data, ai
     current_year = current_date.year
     iso_date = current_date.isoformat()
     
-    # ENHANCED PROMPT with Rich Schema and LLM optimization - REAL AI GENERATION!
+    # ENHANCED PROMPT focused on REAL product data - NO FAKE STATISTICS!
     prompt = f"""
-    You are writing a FINAL, PUBLISHED blog article for NeonXpert's website optimized for both human readers and AI discovery.
+    You are writing a FINAL, PUBLISHED blog article for NeonXpert's website about their ACTUAL products.
     
     ARTICLE TITLE: {topic['title']}
+    
+    REAL PRODUCT DATA TO FEATURE: {product_json}
     
     CRITICAL REQUIREMENTS:
     1. Write FINAL content ready for immediate publication - NO "draft" language
     2. Use {current_year} as the current year throughout
-    3. Structure for Rich Schema and LLM optimization
-    4. Include clear, factual statements that AI models can cite
-    5. Add quotable insights and data points
+    3. Focus ONLY on the actual products provided - their titles, descriptions, themes
+    4. NO FAKE STATISTICS - Do not make up percentages, studies, or data
+    5. NO FAKE EXPERT QUOTES - Do not quote fictional experts
     
-    STRUCTURED CONTENT FORMAT:
+    CONTENT STRUCTURE:
     
     ## Opening Section
-    <p>Engaging hook with factual claim (e.g., "Research shows that illuminated signage increases foot traffic by 23-40% according to the International Sign Association {current_year} study")</p>
+    <p>Engaging introduction about the specific products in the collection, focusing on their actual features and benefits.</p>
     
-    ## Main Content Sections
-    <h2>Primary Keyword Heading</h2>
-    <p>Clear, factual statements. Include specific data points and insights.</p>
+    ## Product Showcase Sections
+    <h2>Featured Products from NeonXpert</h2>
     
-    <div class="expert-insight">
-    <blockquote>
-    <p><strong>Expert Insight:</strong> Quotable professional advice that AI models can reference</p>
-    </blockquote>
-    </div>
+    For each relevant product, create a section like:
+    <h3>[Actual Product Title]</h3>
+    <p>Description based on the actual product information provided. Focus on design, colors, themes, and practical uses.</p>
+    <img src="{{image_url}}" alt="{{title}} by NeonXpert - [relevant keyword]" title="{{title}} - Professional Neon Signage" style="width:100%;max-width:600px;height:auto;display:block;margin:20px auto;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,0.1);">
+    <p><a href="https://neonxpert.com/products/{{handle}}" title="{{title}} - NeonXpert">Shop {{title}}</a></p>
     
-    <h3>Specific Subheading</h3>
+    ## Practical Information
+    <h2>Styling and Placement Ideas</h2>
     <ul>
-    <li><strong>Factual Point:</strong> Specific detail with measurable benefit</li>
-    <li><strong>Technical Detail:</strong> Professional specification or standard</li>
+    <li>Specific suggestions based on the actual product themes and designs</li>
+    <li>Room placement ideas based on product descriptions</li>
+    <li>Styling tips that match the actual product characteristics</li>
     </ul>
     
-    ## FAQ Section (if natural)
-    <h2>Frequently Asked Questions</h2>
-    <h3>Question: [Specific question]?</h3>
-    <p>Clear, authoritative answer with specific details.</p>
+    ## Care and Installation
+    <h2>Installation and Care</h2>
+    <p>General information about LED neon sign installation and maintenance. Keep factual and practical.</p>
     
-    PRODUCT INTEGRATION:
-    Products to feature: {product_json}
-    - Format: <a href="https://neonxpert.com/products/{{handle}}" title="{{title}} - NeonXpert">{{title}}</a>
-    - Images: <img src="{{image_url}}" alt="{{title}} by NeonXpert - [relevant keyword]" title="{{title}} - Professional Neon Signage" style="width:100%;max-width:600px;height:auto;display:block;margin:20px auto;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,0.1);">
+    PRODUCT INTEGRATION REQUIREMENTS:
+    - Feature each product naturally in the content
+    - Use actual product titles and descriptions from the data provided
+    - Link format: <a href="https://neonxpert.com/products/{{handle}}" title="{{title}} - NeonXpert">{{title}}</a>
+    - Include product images with proper alt text
     
-    LLM OPTIMIZATION REQUIREMENTS:
-    - Include specific statistics with sources
-    - Write clear, declarative statements
-    - Use structured lists for easy parsing
-    - Include industry terminology and definitions
-    - Add measurable benefits and specifications
-    - Create quotable expert insights
-    
-    FACTUAL CONTENT EXAMPLES:
-    - "LED neon signs consume 80% less energy than traditional glass neon"
-    - "Professional signage can increase business visibility by up to 300 feet"
-    - "Studies indicate that 68% of consumers enter stores based on signage appeal"
+    FACTUAL GUIDELINES:
+    - Only mention general LED neon benefits (energy efficiency, longevity, safety)
+    - Do not invent specific statistics or studies
+    - Do not quote experts or authorities
+    - Focus on the actual product features and visual appeal
+    - Write from the perspective of showcasing real products
     
     BRANDING & LINKS:
-    - Mention "NeonXpert" 5-7 times naturally
+    - Mention "NeonXpert" naturally 3-5 times
     - Include 2-3 contextual links to: {collection_url}
     - {secondary_prompt}
     
-    TECHNICAL SPECIFICATIONS:
-    - Include specific product dimensions, materials, or features when relevant
-    - Mention industry standards (IP ratings, certifications, etc.)
-    - Add installation or maintenance details where appropriate
-    
-    Write comprehensive, authoritative content that serves as a definitive resource on the topic.
+    Write engaging, informative content that showcases the actual products without fake statistics or expert quotes.
     """
     
     try:
@@ -508,7 +533,7 @@ def generate_article_schema(topic, current_date, product_data, collection_url):
 
 @app.route('/publish_blog', methods=['POST'])
 def publish_blog():
-    """Enhanced publish with better error handling"""
+    """Enhanced publish with better error handling and consistent content"""
     try:
         data = request.json
         topic = data.get('topic')
@@ -802,7 +827,7 @@ def generate_meta_description(topic, content):
 
 def get_smart_tags(title, category):
     """Enhanced smart tags with SEO optimization"""
-    tags = [category, "NeonXpert", "2025"]
+    tags = [category, "NeonXpert", str(datetime.datetime.now().year)]
     
     title_lower = title.lower()
     
@@ -829,6 +854,8 @@ def get_smart_tags(title, category):
         tags.append("How-To")
     if any(word in title_lower for word in ["best", "top", "ultimate"]):
         tags.append("Buying Guide")
+    if any(word in title_lower for word in ["lgbtq", "pride", "rainbow"]):
+        tags.append("LGBTQ Pride")
     
     # Add industry and SEO tags
     tags.extend(["LED Signs", "Business Marketing", "Storefront Design", "SEO Optimized"])
