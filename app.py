@@ -7,217 +7,29 @@ from dotenv import load_dotenv
 import anthropic
 import openai
 from werkzeug.utils import secure_filename
-import logging
-import traceback
-import re
-from collections import defaultdict
+import tempfile
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'nx-blog-generator-2025')
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# API Clients - Initialize lazily to avoid startup errors
+claude_client = None
+openai_client = None
 
 # Shopify Config
 SHOP_NAME = os.getenv("SHOP_NAME")
-ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
 BLOG_ID = os.getenv("SHOPIFY_BLOG_ID")
-SHOP_URL = f"https://{SHOP_NAME}.myshopify.com/admin/api/2025-01"
+SHOP_URL = f"https://{SHOP_NAME}.myshopify.com/admin/api/2025-07"
 
-# SEO-based keyword mapping for real search terms
-SEO_KEYWORDS = {
-    'dispensary': {'name': 'Dispensary Open Signs', 'monthly_searches': 1200, 'keywords': ['dispensary', 'cannabis', 'weed', 'dope', 'medical', 'marijuana']},
-    'coffee': {'name': 'Coffee Shop Open Signs', 'monthly_searches': 800, 'keywords': ['coffee', 'cafe', 'espresso', 'caffeine', 'barista', 'java']},
-    'restaurant': {'name': 'Restaurant Open Signs', 'monthly_searches': 900, 'keywords': ['restaurant', 'food', 'dining', 'eat', 'kitchen', 'burger', 'pizza']},
-    'bar': {'name': 'Bar Open Signs', 'monthly_searches': 600, 'keywords': ['bar', 'pub', 'drinks', 'cocktails', 'beer', 'wine', 'alcohol']},
-    'retail': {'name': 'Retail Store Open Signs', 'monthly_searches': 700, 'keywords': ['store', 'shop', 'retail', 'boutique', 'sale', 'shopping']},
-    'funny': {'name': 'Funny Open Signs', 'monthly_searches': 500, 'keywords': ['funny', 'witty', 'humor', 'joke', 'clever', 'regret', 'sarcastic']},
-    'welcome': {'name': 'Welcome Open Signs', 'monthly_searches': 400, 'keywords': ['welcome', 'come in', 'enter', 'greetings', 'hello']},
-    'custom': {'name': 'Custom Open Signs', 'monthly_searches': 300, 'keywords': ['custom', 'personalized', 'bespoke', 'unique', 'special']}
+# Headers for Shopify API authentication
+SHOPIFY_HEADERS = {
+    "X-Shopify-Access-Token": os.getenv("SHOPIFY_ACCESS_TOKEN"),
+    "Content-Type": "application/json"
 }
-
-@app.route('/test_ai', methods=['GET'])
-def test_ai():
-    """Test AI connections independently for debugging"""
-    try:
-        results = {}
-        
-        # Test Claude
-        try:
-            import httpx
-            http_client = httpx.Client(proxies=None, timeout=30.0)
-            claude_client = anthropic.Anthropic(
-                api_key=os.getenv('ANTHROPIC_API_KEY'),
-                http_client=http_client
-            )
-            
-            response = claude_client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=100,
-                temperature=0.6,
-                messages=[{"role": "user", "content": "Write a brief sentence about neon signs."}]
-            )
-            
-            results['claude'] = {
-                'status': 'success',
-                'response': response.content[0].text[:100],
-                'model': 'claude-3-5-sonnet-20241022'
-            }
-            http_client.close()
-            
-        except Exception as claude_error:
-            results['claude'] = {
-                'status': 'error',
-                'error': str(claude_error)
-            }
-        
-        # Test OpenAI
-        try:
-            import httpx
-            http_client = httpx.Client(proxies=None, timeout=30.0)
-            openai_client = openai.OpenAI(
-                api_key=os.getenv('OPENAI_API_KEY'),
-                http_client=http_client
-            )
-            
-            response = openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": "Write a brief sentence about neon signs."}],
-                max_tokens=100,
-                temperature=0.6
-            )
-            
-            results['openai'] = {
-                'status': 'success',
-                'response': response.choices[0].message.content[:100],
-                'model': 'gpt-4o'
-            }
-            http_client.close()
-            
-        except Exception as openai_error:
-            results['openai'] = {
-                'status': 'error',
-                'error': str(openai_error)
-            }
-        
-        return jsonify({
-            'success': True,
-            'results': results,
-            'environment': {
-                'has_anthropic_key': bool(os.getenv('ANTHROPIC_API_KEY')),
-                'has_openai_key': bool(os.getenv('OPENAI_API_KEY')),
-                'anthropic_key_preview': os.getenv('ANTHROPIC_API_KEY', '')[:8] + '...' if os.getenv('ANTHROPIC_API_KEY') else 'None',
-                'openai_key_preview': os.getenv('OPENAI_API_KEY', '')[:8] + '...' if os.getenv('OPENAI_API_KEY') else 'None'
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"AI test failed: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/debug')
-def debug():
-    """Debug page for testing AI connections"""
-    return '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Connection Test</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 p-8">
-    <div class="max-w-4xl mx-auto">
-        <h1 class="text-3xl font-bold mb-6">AI Connection Test</h1>
-        
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
-            <button onclick="testAI()" class="bg-blue-500 text-white px-6 py-3 rounded hover:bg-blue-600">
-                Test AI Connections
-            </button>
-            <div id="loading" class="hidden mt-4 flex items-center space-x-3">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                <p>Testing AI connections...</p>
-            </div>
-        </div>
-
-        <div id="results" class="hidden bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-bold mb-4">Test Results</h2>
-            <div id="resultsContent"></div>
-        </div>
-    </div>
-
-    <script>
-        async function testAI() {
-            const loading = document.getElementById('loading');
-            const results = document.getElementById('results');
-            const resultsContent = document.getElementById('resultsContent');
-            
-            loading.classList.remove('hidden');
-            results.classList.add('hidden');
-            
-            try {
-                const response = await fetch('/test_ai');
-                const data = await response.json();
-                
-                loading.classList.add('hidden');
-                results.classList.remove('hidden');
-                
-                let html = '';
-                
-                if (data.success) {
-                    // Environment info
-                    html += '<div class="mb-6 p-4 bg-gray-50 rounded"><h3 class="font-bold mb-2">Environment</h3>';
-                    html += `<p>Anthropic Key: ${data.environment.has_anthropic_key ? '✅ Present' : '❌ Missing'} (${data.environment.anthropic_key_preview})</p>`;
-                    html += `<p>OpenAI Key: ${data.environment.has_openai_key ? '✅ Present' : '❌ Missing'} (${data.environment.openai_key_preview})</p></div>`;
-                    
-                    // Claude results
-                    html += '<div class="mb-4 p-4 border rounded">';
-                    html += '<h3 class="font-bold text-lg mb-2">Claude Test</h3>';
-                    if (data.results.claude.status === 'success') {
-                        html += `<div class="text-green-600">✅ Success</div>`;
-                        html += `<p class="text-sm text-gray-600">Model: ${data.results.claude.model}</p>`;
-                        html += `<p class="mt-2 italic">"${data.results.claude.response}"</p>`;
-                    } else {
-                        html += `<div class="text-red-600">❌ Failed</div>`;
-                        html += `<p class="text-red-500 text-sm mt-2">${data.results.claude.error}</p>`;
-                    }
-                    html += '</div>';
-                    
-                    // OpenAI results
-                    html += '<div class="mb-4 p-4 border rounded">';
-                    html += '<h3 class="font-bold text-lg mb-2">OpenAI Test</h3>';
-                    if (data.results.openai.status === 'success') {
-                        html += `<div class="text-green-600">✅ Success</div>`;
-                        html += `<p class="text-sm text-gray-600">Model: ${data.results.openai.model}</p>`;
-                        html += `<p class="mt-2 italic">"${data.results.openai.response}"</p>`;
-                    } else {
-                        html += `<div class="text-red-600">❌ Failed</div>`;
-                        html += `<p class="text-red-500 text-sm mt-2">${data.results.openai.error}</p>`;
-                    }
-                    html += '</div>';
-                    
-                } else {
-                    html += `<div class="text-red-600">Test failed: ${data.error}</div>`;
-                }
-                
-                resultsContent.innerHTML = html;
-                
-            } catch (error) {
-                loading.classList.add('hidden');
-                results.classList.remove('hidden');
-                resultsContent.innerHTML = `<div class="text-red-600">Network error: ${error.message}</div>`;
-            }
-        }
-    </script>
-</body>
-</html>
-    '''
 
 @app.route('/')
 def index():
@@ -225,835 +37,423 @@ def index():
 
 @app.route('/validate_collection', methods=['POST'])
 def validate_collection():
-    """Validate collection URL with enhanced error handling"""
+    """Validate collection URL and extract title/description"""
     try:
         data = request.json
         collection_url = data.get('url', '')
         
+        # Extract collection handle from URL
         if '/collections/' in collection_url:
             handle = collection_url.split('/collections/')[-1].strip('/')
         else:
-            return jsonify({'success': False, 'error': 'Invalid collection URL format'})
+            return jsonify({'success': False, 'error': 'Invalid collection URL'})
         
-        logger.info(f"Validating collection handle: {handle}")
+        # Fetch custom collections
+        custom_url = f"{SHOP_URL}/custom_collections.json"
+        custom_response = requests.get(custom_url, headers=SHOPIFY_HEADERS)
         
-        headers = {
-            "X-Shopify-Access-Token": ACCESS_TOKEN,
-            "Content-Type": "application/json"
-        }
+        # Fetch smart collections
+        smart_url = f"{SHOP_URL}/smart_collections.json"
+        smart_response = requests.get(smart_url, headers=SHOPIFY_HEADERS)
         
         target_collection = None
         
-        # Check custom collections
-        try:
-            custom_url = f"{SHOP_URL}/custom_collections.json"
-            custom_response = requests.get(custom_url, headers=headers, timeout=10)
-            
-            if custom_response.status_code == 200:
-                collections = custom_response.json().get('custom_collections', [])
-                for collection in collections:
-                    if collection.get('handle') == handle:
-                        target_collection = collection
-                        break
-        except Exception as e:
-            logger.error(f"Custom collections error: {e}")
+        if custom_response.status_code == 200:
+            collections = custom_response.json().get('custom_collections', [])
+            for collection in collections:
+                if collection.get('handle') == handle:
+                    target_collection = collection
+                    break
         
-        # Check smart collections
-        if not target_collection:
-            try:
-                smart_url = f"{SHOP_URL}/smart_collections.json"
-                smart_response = requests.get(smart_url, headers=headers, timeout=10)
-                
-                if smart_response.status_code == 200:
-                    collections = smart_response.json().get('smart_collections', [])
-                    for collection in collections:
-                        if collection.get('handle') == handle:
-                            target_collection = collection
-                            break
-            except Exception as e:
-                logger.error(f"Smart collections error: {e}")
+        if not target_collection and smart_response.status_code == 200:
+            collections = smart_response.json().get('smart_collections', [])
+            for collection in collections:
+                if collection.get('handle') == handle:
+                    target_collection = collection
+                    break
         
         if target_collection:
-            description = target_collection.get('body_html', '')
-            if description:
-                description = re.sub('<[^<]+?>', '', description).strip()
-                description = description[:200] + '...' if len(description) > 200 else description
-            else:
-                description = f"Premium {target_collection.get('title', 'Collection')} from NeonXpert"
-            
             return jsonify({
                 'success': True,
                 'title': target_collection.get('title', 'Unknown Collection'),
-                'description': description
+                'description': target_collection.get('body_html', '').replace('<p>', '').replace('</p>', '').strip()[:200] + '...'
             })
         else:
-            return jsonify({
-                'success': False, 
-                'error': f'Collection "{handle}" not found. Please verify the URL is correct.'
-            })
+            error = 'Collection not found'
+            if custom_response.status_code != 200:
+                error += f' (Custom: {custom_response.status_code} - {custom_response.text})'
+            if smart_response.status_code != 200:
+                error += f' (Smart: {smart_response.status_code} - {smart_response.text})'
+            return jsonify({'success': False, 'error': error})
             
     except Exception as e:
-        logger.error(f"Collection validation error: {e}")
-        return jsonify({'success': False, 'error': f'Validation failed: {str(e)}'})
-
-@app.route('/analyze_csv', methods=['POST'])
-def analyze_csv():
-    """Analyze CSV and detect smart subcategories based on SEO keywords"""
-    try:
-        csv_file = request.files.get('csv_file')
-        if not csv_file:
-            return jsonify({'success': False, 'error': 'No CSV file provided'})
-        
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        
-        filename = secure_filename(csv_file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        csv_file.save(filepath)
-        
-        # Parse CSV and categorize products
-        subcategories = analyze_products_for_subcategories(filepath)
-        
-        os.remove(filepath)
-        
-        logger.info(f"Detected {len(subcategories)} subcategories from CSV")
-        
-        return jsonify({
-            'success': True,
-            'subcategories': subcategories
-        })
-        
-    except Exception as e:
-        logger.error(f"CSV analysis error: {e}")
-        return jsonify({'success': False, 'error': f'Analysis failed: {str(e)}'})
-
-def analyze_products_for_subcategories(filepath):
-    """Analyze products and group them into SEO-based subcategories"""
-    subcategories = defaultdict(list)
-    
-    with open(filepath, 'r', encoding='utf-8', errors='ignore') as csvfile:
-        sample = csvfile.read(1024)
-        csvfile.seek(0)
-        
-        delimiter = ',' if ',' in sample else '\t' if '\t' in sample else ';'
-        reader = csv.DictReader(csvfile, delimiter=delimiter)
-        
-        for row in reader:
-            handle = row.get('Handle', '').strip()
-            title = row.get('Title', '').strip()
-            tags = row.get('Tags', '').strip()
-            image_url = row.get('Variant Image', '').strip()
-            
-            if not handle or not title:
-                continue
-                
-            # Analyze product and assign to subcategories
-            product_text = f"{title} {tags}".lower()
-            assigned_categories = []
-            
-            for category_key, category_data in SEO_KEYWORDS.items():
-                for keyword in category_data['keywords']:
-                    if keyword in product_text:
-                        assigned_categories.append(category_key)
-                        break
-            
-            # If no specific category found, try to infer from title
-            if not assigned_categories:
-                if any(word in product_text for word in ['open', 'welcome', 'enter']):
-                    assigned_categories.append('welcome')
-                else:
-                    assigned_categories.append('custom')
-            
-            # Add product to assigned categories
-            product_data = {
-                'handle': handle,
-                'title': title,
-                'tags': tags,
-                'image_url': image_url
-            }
-            
-            for category in assigned_categories:
-                subcategories[category].append(product_data)
-    
-    # Format for frontend
-    result = []
-    for category_key, products in subcategories.items():
-        if len(products) >= 1:  # Only include categories with products
-            category_info = SEO_KEYWORDS[category_key]
-            result.append({
-                'key': category_key,
-                'name': category_info['name'],
-                'count': len(products),
-                'monthly_searches': category_info['monthly_searches'],
-                'products': products[:10]  # Limit for preview
-            })
-    
-    # Sort by search volume
-    result.sort(key=lambda x: x['monthly_searches'], reverse=True)
-    
-    return result
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/generate_ideas', methods=['POST'])
 def generate_ideas():
-    """Generate targeted blog ideas based on selected subcategories"""
+    """Generate blog ideas based on uploaded CSV and settings"""
     try:
+        # Get form data
         csv_file = request.files.get('csv_file')
         collection_url = request.form.get('collection_url')
-        selected_subcategories = request.form.get('selected_subcategories', '[]')
-        selected_subcategories = json.loads(selected_subcategories)
+        ai_model = request.form.get('ai_model')
+        collection_type = request.form.get('collection_type')
         
-        if not csv_file or not selected_subcategories:
-            return jsonify({'success': False, 'error': 'Missing CSV file or subcategories'})
+        if not csv_file:
+            return jsonify({'success': False, 'error': 'No CSV file uploaded'})
         
+        # Create uploads directory if it doesn't exist
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         
+        # Save and process CSV using built-in csv module
         filename = secure_filename(csv_file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         csv_file.save(filepath)
         
-        # Get products for selected subcategories
-        all_products = get_products_by_subcategories(filepath, selected_subcategories)
+        # Read CSV and extract product data using built-in CSV reader
+        unique_products = []
+        seen_handles = set()
         
-        # Generate targeted blog ideas
-        blog_ideas = []
-        for subcategory in selected_subcategories:
-            if subcategory in SEO_KEYWORDS and subcategory in all_products:
-                ideas = generate_subcategory_blog_ideas(subcategory, all_products[subcategory], collection_url)
-                blog_ideas.extend(ideas)
+        with open(filepath, 'r', encoding='utf-8') as csvfile:
+            # Detect delimiter and read CSV
+            sample = csvfile.read(1024)
+            csvfile.seek(0)
+            sniffer = csv.Sniffer()
+            delimiter = sniffer.sniff(sample).delimiter
+            
+            reader = csv.DictReader(csvfile, delimiter=delimiter)
+            
+            for row in reader:
+                handle = row.get('Handle', '')
+                if handle and handle not in seen_handles:
+                    seen_handles.add(handle)
+                    unique_products.append({
+                        'handle': handle,
+                        'title': row.get('Title', ''),
+                        'body': row.get('Body (HTML)', ''),
+                        'tags': row.get('Tags', ''),
+                        'image_url': row.get('Variant Image', ''),
+                        'price': row.get('Variant Price', '')
+                    })
         
+        # Generate blog ideas based on collection type
+        blog_ideas = generate_blog_ideas_for_type(collection_type, unique_products, collection_url)
+        
+        # Clean up uploaded file
         os.remove(filepath)
-        
-        logger.info(f"Generated {len(blog_ideas)} targeted blog ideas")
         
         return jsonify({
             'success': True,
             'ideas': blog_ideas,
-            'total_products': sum(len(products) for products in all_products.values())
+            'product_count': len(unique_products)
         })
         
     except Exception as e:
-        logger.error(f"Blog generation error: {e}")
-        return jsonify({'success': False, 'error': f'Generation failed: {str(e)}'})
+        return jsonify({'success': False, 'error': str(e)})
 
-def get_products_by_subcategories(filepath, selected_subcategories):
-    """Get products organized by subcategories"""
-    products_by_category = defaultdict(list)
+def generate_blog_ideas_for_type(collection_type, products, collection_url):
+    """Generate blog ideas based on collection type"""
     
-    with open(filepath, 'r', encoding='utf-8', errors='ignore') as csvfile:
-        sample = csvfile.read(1024)
-        csvfile.seek(0)
-        
-        delimiter = ',' if ',' in sample else '\t' if '\t' in sample else ';'
-        reader = csv.DictReader(csvfile, delimiter=delimiter)
-        
-        seen_handles = set()
-        
-        for row in reader:
-            handle = row.get('Handle', '').strip()
-            if handle in seen_handles or not handle:
-                continue
-            seen_handles.add(handle)
-            
-            title = row.get('Title', '').strip()
-            tags = row.get('Tags', '').strip()
-            image_url = row.get('Variant Image', '').strip()
-            product_text = f"{title} {tags}".lower()
-            
-            product_data = {
-                'handle': handle,
-                'title': title,
-                'tags': tags,
-                'image_url': image_url,
-                'body': row.get('Body (HTML)', '').strip(),
-                'price': row.get('Variant Price', '').strip()
-            }
-            
-            # Assign to selected subcategories
-            for category in selected_subcategories:
-                if category in SEO_KEYWORDS:
-                    keywords = SEO_KEYWORDS[category]['keywords']
-                    if any(keyword in product_text for keyword in keywords):
-                        products_by_category[category].append(product_data)
+    # Extract collection name from URL
+    collection_name = collection_url.split('/collections/')[-1].replace('-', ' ').title()
     
-    return products_by_category
-
-def generate_subcategory_blog_ideas(subcategory, products, collection_url):
-    """Generate targeted blog ideas for a specific subcategory"""
-    category_info = SEO_KEYWORDS[subcategory]
-    category_name = category_info['name']
-    search_volume = category_info['monthly_searches']
-    
-    # Determine number of blogs based on product count and search volume
-    product_count = len(products)
-    if product_count >= 15 and search_volume >= 800:
-        num_blogs = 5
-    elif product_count >= 8 and search_volume >= 500:
-        num_blogs = 3
-    elif product_count >= 3:
-        num_blogs = 2
-    else:
-        num_blogs = 1
-    
-    # Select most relevant product for featured image
-    featured_product = products[0] if products else None
-    
-    blog_templates = {
-        'dispensary': [
+    if collection_type == 'business':
+        return [
             {
-                'title': f'Best {category_name} That Build Customer Trust (2025)',
-                'description': 'Expert guide to cannabis business signage that increases foot traffic and builds professional credibility',
-                'category': 'Cannabis Business',
-                'focus_keyword': 'dispensary open signs'
+                'title': f'Best {collection_name} for Small Businesses That Increase Foot Traffic',
+                'description': 'Marketing-focused guide featuring top products for business growth',
+                'category': 'Marketing',
+                'wordCount': '800-1000',
+                'type': 'marketing'
             },
             {
-                'title': f'How {category_name} Affect Customer Perception',
-                'description': 'Psychology-based analysis of how cannabis signage influences customer decisions and trust',
-                'category': 'Business Psychology',
-                'focus_keyword': 'dispensary signage psychology'
+                'title': f'How to Choose {collection_name} for Your Business (Complete Guide)',
+                'description': 'Step-by-step guide for business owners making purchasing decisions',
+                'category': 'How-To',
+                'wordCount': '1000-1200',
+                'type': 'howto'
             },
             {
-                'title': f'{category_name} That Actually Increase Sales',
-                'description': 'Data-driven examples of dispensary signage with proven ROI and conversion rates',
-                'category': 'Sales Optimization',
-                'focus_keyword': 'dispensary signs increase sales'
-            }
-        ],
-        'coffee': [
-            {
-                'title': f'Best {category_name} for Higher Foot Traffic',
-                'description': 'Complete guide to coffee shop signage that attracts morning rush customers',
-                'category': 'Coffee Business',
-                'focus_keyword': 'coffee shop open signs'
+                'title': f'10 Creative {collection_name} Ideas That Actually Work',
+                'description': 'Curated list of creative implementations with real examples',
+                'category': 'Listicle',
+                'wordCount': '800-1000',
+                'type': 'listicle'
             },
             {
-                'title': f'Creative {category_name} That Go Viral',
-                'description': 'Instagram-worthy coffee shop signage ideas that generate social media buzz',
-                'category': 'Social Media Marketing',
-                'focus_keyword': 'creative coffee shop signs'
+                'title': f'{collection_name} Psychology: How Customers Decide to Enter',
+                'description': 'Deep dive into customer psychology and decision-making',
+                'category': 'Psychology',
+                'wordCount': '900-1100',
+                'type': 'psychology'
             },
             {
-                'title': f'How {category_name} Build Community Connection',
-                'description': 'Psychology of coffee culture and how welcoming signage creates loyal customers',
-                'category': 'Community Building',
-                'focus_keyword': 'coffee shop community signage'
-            }
-        ],
-        'restaurant': [
-            {
-                'title': f'Best {category_name} That Fill Empty Tables',
-                'description': 'Restaurant signage strategies that increase walk-in customers and table turnover',
-                'category': 'Restaurant Marketing',
-                'focus_keyword': 'restaurant open signs'
+                'title': f'Instagram-Worthy {collection_name} That Go Viral',
+                'description': 'Social media focused content with shareable examples',
+                'category': 'Social Media',
+                'wordCount': '700-900',
+                'type': 'social'
             },
             {
-                'title': f'{category_name} for Different Dining Experiences',
-                'description': 'How to choose signage that matches your restaurant atmosphere and target audience',
-                'category': 'Restaurant Design',
-                'focus_keyword': 'restaurant signage design'
-            }
-        ],
-        'funny': [
-            {
-                'title': f'{category_name} That Make Customers Smile',
-                'description': 'Witty and humorous business signage that creates memorable customer experiences',
-                'category': 'Humor Marketing',
-                'focus_keyword': 'funny open signs'
+                'title': f'Why Generic {collection_name} Don\'t Work (And What Does)',
+                'description': 'Problem-solving approach highlighting common mistakes',
+                'category': 'Problem-Solving',
+                'wordCount': '800-1000',
+                'type': 'problem'
             },
             {
-                'title': f'Why {category_name} Work Better Than Boring Ones',
-                'description': 'Psychology of humor in business signage and its impact on customer engagement',
-                'category': 'Marketing Psychology',
-                'focus_keyword': 'humorous business signs'
+                'title': f'{collection_name} Trends Dominating 2025',
+                'description': 'Current trends and future predictions in the industry',
+                'category': 'Trends',
+                'wordCount': '700-900',
+                'type': 'trends'
             }
         ]
-    }
     
-    # Default templates for other categories
-    default_templates = [
+    elif collection_type == 'wedding':
+        return [
+            {
+                'title': f'30 {collection_name} Ideas That Will Make Guests Swoon',
+                'description': 'Romantic inspiration gallery with real wedding examples',
+                'category': 'Inspiration',
+                'wordCount': '1000-1200',
+                'type': 'inspiration'
+            },
+            {
+                'title': f'How to Choose {collection_name} That Match Your Wedding Theme',
+                'description': 'Planning guide for coordinating with wedding aesthetics',
+                'category': 'Planning',
+                'wordCount': '900-1100',
+                'type': 'planning'
+            },
+            {
+                'title': f'DIY {collection_name}: Create Your Perfect Wedding Day',
+                'description': 'Step-by-step DIY instructions and tips',
+                'category': 'DIY',
+                'wordCount': '1100-1300',
+                'type': 'diy'
+            },
+            {
+                'title': f'Affordable {collection_name} That Look Expensive',
+                'description': 'Budget-friendly options that maintain premium appearance',
+                'category': 'Budget',
+                'wordCount': '800-1000',
+                'type': 'budget'
+            },
+            {
+                'title': f'Instagram-Perfect {collection_name} for Wedding Photos',
+                'description': 'Photography-focused guide for social media worthy shots',
+                'category': 'Photography',
+                'wordCount': '700-900',
+                'type': 'photography'
+            }
+        ]
+    
+    elif collection_type == 'home':
+        return [
+            {
+                'title': f'{collection_name} That Transform Any Room',
+                'description': 'Interior design focused guide with before/after examples',
+                'category': 'Design',
+                'wordCount': '900-1100',
+                'type': 'design'
+            },
+            {
+                'title': f'How to Style {collection_name} in Modern Homes',
+                'description': 'Contemporary styling tips and placement strategies',
+                'category': 'Styling',
+                'wordCount': '800-1000',
+                'type': 'styling'
+            },
+            {
+                'title': f'Cozy {collection_name} Ideas for Every Season',
+                'description': 'Seasonal decoration strategies and mood creation',
+                'category': 'Seasonal',
+                'wordCount': '800-1000',
+                'type': 'seasonal'
+            }
+        ]
+    
+    elif collection_type == 'kids':
+        return [
+            {
+                'title': f'{collection_name} That Spark Imagination',
+                'description': 'Creative and educational focus for child development',
+                'category': 'Creative',
+                'wordCount': '800-1000',
+                'type': 'creative'
+            },
+            {
+                'title': f'Safe {collection_name} for Kids Bedrooms',
+                'description': 'Safety-focused guide for parents with peace of mind',
+                'category': 'Safety',
+                'wordCount': '900-1100',
+                'type': 'safety'
+            }
+        ]
+    
+    # Default fallback
+    return [
         {
-            'title': f'Ultimate {category_name} Guide for Business Owners',
-            'description': f'Complete guide to choosing and using {category_name.lower()} effectively',
-            'category': 'Business Guide',
-            'focus_keyword': category_name.lower()
-        },
-        {
-            'title': f'How {category_name} Increase Customer Trust',
-            'description': f'Professional insights on how {category_name.lower()} impact customer perception',
-            'category': 'Customer Trust',
-            'focus_keyword': f'{category_name.lower()} customer trust'
+            'title': f'Best {collection_name} for Your Needs',
+            'description': 'General guide covering top products and use cases',
+            'category': 'Guide',
+            'wordCount': '800-1000',
+            'type': 'guide'
         }
     ]
-    
-    templates = blog_templates.get(subcategory, default_templates)
-    
-    # Generate blog ideas
-    ideas = []
-    for i in range(min(num_blogs, len(templates))):
-        template = templates[i]
-        ideas.append({
-            'title': template['title'],
-            'description': template['description'],
-            'category': template['category'],
-            'wordCount': '1200-1500',
-            'type': subcategory,
-            'subcategory': category_name,
-            'focus_keyword': template['focus_keyword'],
-            'featured_image': featured_product['image_url'] if featured_product and featured_product['image_url'] else '',
-            'featured_product': featured_product,
-            'related_products': products[:5]  # Top 5 products for content
-        })
-    
-    return ideas
-
-@app.route('/generate_preview', methods=['POST'])
-def generate_preview():
-    """Generate blog content preview"""
-    try:
-        data = request.json
-        idea = data.get('idea')
-        collection_url = data.get('collection_url')
-        ai_model = data.get('ai_model', 'claude')
-        
-        logger.info(f"Generating preview for: {idea['title']}")
-        
-        # Generate blog content
-        blog_html = generate_professional_blog_content(idea, collection_url, ai_model)
-        
-        return jsonify({
-            'success': True,
-            'content': blog_html,
-            'featured_image': idea.get('featured_image', ''),
-            'word_count': len(blog_html.split())
-        })
-        
-    except Exception as e:
-        logger.error(f"Preview generation error: {e}")
-        return jsonify({'success': False, 'error': f'Preview generation failed: {str(e)}'})
 
 @app.route('/publish_blog', methods=['POST'])
 def publish_blog():
-    """Publish blog with proper error handling and image integration"""
+    """Generate and publish a single blog post"""
     try:
         data = request.json
         idea = data.get('idea')
         collection_url = data.get('collection_url')
         ai_model = data.get('ai_model', 'claude')
-        custom_content = data.get('custom_content', '')  # For edited content
         
-        logger.info(f"Publishing blog: {idea['title']}")
+        # Generate the blog content
+        blog_html = generate_blog_content(idea, collection_url, ai_model)
         
-        # Use custom content if provided, otherwise generate new
-        if custom_content:
-            blog_html = custom_content
-            logger.info("Using custom edited content")
-        else:
-            blog_html = generate_professional_blog_content(idea, collection_url, ai_model)
-        
-        # CRITICAL: Check if content generation actually succeeded
-        if not blog_html or len(blog_html.strip()) < 100:
-            raise Exception("Content generation failed - insufficient content")
-        
-        if "generation failed" in blog_html.lower() or "temporarily unavailable" in blog_html.lower():
-            raise Exception("AI content generation failed")
-        
-        logger.info(f"Generated content: {len(blog_html)} characters")
-        
-        # Create slug and prepare for publishing
+        # Create SEO-friendly slug
         slug = create_slug(idea['title'])
         
-        headers = {
-            "X-Shopify-Access-Token": ACCESS_TOKEN,
-            "Content-Type": "application/json"
-        }
-        
-        # Prepare blog data with featured image
+        # Prepare blog data for Shopify
         blog_data = {
             "article": {
                 "title": idea['title'],
                 "body_html": blog_html,
-                "blog_id": int(BLOG_ID),
-                "tags": get_professional_tags(idea['title'], idea['category']),
+                "blog_id": BLOG_ID,
+                "tags": get_smart_tags(idea['title'], idea['category']),
+                "template_suffix": "ecom-neonxpert-blog-post",
                 "published": True,
                 "handle": slug,
-                "summary": idea['description'][:160],
+                "metafields": [
+                    {
+                        "key": "title_tag",
+                        "value": idea['title'][:70],
+                        "type": "single_line_text_field",
+                        "namespace": "global"
+                    },
+                    {
+                        "key": "description_tag",
+                        "value": idea['description'],
+                        "type": "single_line_text_field",
+                        "namespace": "global"
+                    }
+                ]
             }
         }
         
-        # Add featured image if available
-        if idea.get('featured_image'):
-            # For Shopify, we'll include the image in the content and as attachment
-            logger.info(f"Adding featured image: {idea['featured_image']}")
-            blog_data["article"]["image"] = {
-                "src": idea['featured_image'],
-                "alt": idea['title']
-            }
-        
-        publish_url = f"{SHOP_URL}/blogs/{BLOG_ID}/articles.json"
-        response = requests.post(publish_url, json=blog_data, headers=headers, timeout=45)
-        
-        logger.info(f"Shopify response: {response.status_code}")
+        # Upload to Shopify
+        response = requests.post(
+            f"{SHOP_URL}/blogs/{BLOG_ID}/articles.json",
+            json=blog_data,
+            headers=SHOPIFY_HEADERS
+        )
         
         if response.status_code == 201:
-            response_data = response.json()
-            article = response_data.get('article', {})
-            article_id = article.get('id')
-            article_handle = article.get('handle')
+            article = response.json()['article']
+            blog_url = f"https://{SHOP_NAME}.myshopify.com/blogs/neon-sign-ideas/{slug}"
             
-            if article_id and article_handle:
-                blog_url = f"https://{SHOP_NAME}.myshopify.com/blogs/neon-sign-ideas/{article_handle}"
-                logger.info(f"SUCCESS: Published at {blog_url}")
-                
-                return jsonify({
-                    'success': True,
-                    'blog_id': article_id,
-                    'blog_url': blog_url,
-                    'title': article.get('title', idea['title'])
-                })
-            else:
-                raise Exception("Blog created but missing ID/handle in response")
+            return jsonify({
+                'success': True,
+                'blog_id': article['id'],
+                'blog_url': blog_url
+            })
         else:
-            error_data = response.json() if response.text else {}
-            error_msg = f"Shopify API Error {response.status_code}: {error_data.get('errors', response.text)}"
-            raise Exception(error_msg)
+            return jsonify({
+                'success': False,
+                'error': f"Shopify API error: {response.status_code} - {response.text}"
+            })
             
     except Exception as e:
-        logger.error(f"Publishing failed: {e}")
-        logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)})
 
-def generate_professional_blog_content(idea, collection_url, ai_model):
-    """Generate high-quality, human-like, SEO and LLM optimized content with images"""
+def generate_blog_content(idea, collection_url, ai_model):
+    """Generate blog content using specified AI model with LATEST MODELS"""
     
-    # Build comprehensive context
-    related_products = idea.get('related_products', [])
-    product_context = ""
-    if related_products:
-        product_context = f"Featured products to mention naturally: {', '.join([p['title'] for p in related_products[:3]])}"
-    
-    # Advanced prompt for human-like, structured content
     prompt = f"""
-Write an expert blog post with the title: "{idea['title']}"
-
-CONTEXT:
-- Category: {idea['category']}  
-- Target keyword: {idea.get('focus_keyword', '')}
-- Subcategory: {idea.get('subcategory', '')}
-- Word count: {idea['wordCount']}
-- {product_context}
-
-CONTENT REQUIREMENTS:
-- Write as a neon signage expert with 10+ years experience
-- Include personal insights and real-world examples
-- Use data and statistics naturally (e.g., "In my experience working with 200+ businesses...")
-- Structure with clear H2, H3 headings for scanability
-- Add practical, actionable advice business owners can implement
-- Include internal link to: {collection_url}
-- Include custom neon link: https://neonxpert.com/products/custom-neon-sign
-- Mention "NeonXpert" 4-5 times naturally throughout
-
-WRITING STYLE:
-- Professional yet conversational tone
-- Write for business owners, not SEO bots  
-- Use first person occasionally ("In my 10 years of experience...")
-- Include real scenarios and case studies
-- Avoid AI phrases like "In conclusion," "Furthermore," "It's important to note"
-- Make it sound like it's written by a human expert, not AI
-
-E-E-A-T OPTIMIZATION:
-- Experience: Share real insights from working with businesses
-- Expertise: Demonstrate deep knowledge of signage and business psychology  
-- Authoritativeness: Reference industry standards and best practices
-- Trustworthiness: Provide honest, practical advice
-
-SEO OPTIMIZATION:
-- Use target keyword naturally in H2 headings
-- Include semantic keywords related to neon signage
-- Structure content for featured snippets (lists, clear answers)
-- Optimize for question-based searches
-
-LLM OPTIMIZATION:
-- Write clear, factual statements for AI model training data
-- Use structured information that's easy to parse
-- Include specific, quotable insights about neon signage industry
-- Make content valuable for AI models to cite and reference
-
-STRUCTURE:
-1. Engaging introduction with a hook
-2. 3-4 main sections with H2 headings
-3. Practical tips and real examples
-4. Brief conclusion with clear call-to-action
-
-Remember: Write like a human expert sharing genuine knowledge, not like AI generating content.
-"""
+    Write a comprehensive, high-quality blog post with the title: "{idea['title']}"
     
-    content = None
-    errors = []
+    Requirements:
+    - Category: {idea['category']}
+    - Word count: {idea['wordCount']}
+    - Target audience: Business owners and consumers
+    - Include internal links to: {collection_url}
+    - Include link to custom neon sign: https://neonxpert.com/products/custom-neon-sign
+    - Write in professional, engaging tone that builds expertise and trust
+    - Include practical advice and actionable tips
+    - Use HTML formatting with proper headings (h2, h3)
+    - Include bullet points and numbered lists where appropriate
+    - Add a compelling conclusion with clear call-to-action
     
-    # Try Claude first if selected
+    CRITICAL: Follow E-E-A-T principles:
+    - Experience: Include real insights and first-hand knowledge
+    - Expertise: Demonstrate deep understanding of the topic
+    - Authoritativeness: Reference industry standards and best practices
+    - Trustworthiness: Provide accurate, helpful information
+    
+    Focus on providing genuine value and expertise while naturally incorporating product mentions.
+    Write as if you're an expert in neon signage and business marketing.
+    """
+    
     if ai_model == 'claude':
-        content, error = try_claude_generation(prompt)
-        if error:
-            errors.append(f"Claude: {error}")
-        
-        # If Claude failed, try OpenAI as backup
-        if not content:
-            logger.info("Claude failed, trying OpenAI as backup...")
-            backup_content, backup_error = try_openai_generation(prompt)
-            if backup_content:
-                content = backup_content
-                logger.info("OpenAI backup successful")
-            else:
-                errors.append(f"OpenAI backup: {backup_error}")
-    
-    # Try OpenAI first if selected  
-    else:
-        content, error = try_openai_generation(prompt)
-        if error:
-            errors.append(f"OpenAI: {error}")
-        
-        # If OpenAI failed, try Claude as backup
-        if not content:
-            logger.info("OpenAI failed, trying Claude as backup...")
-            backup_content, backup_error = try_claude_generation(prompt)
-            if backup_content:
-                content = backup_content
-                logger.info("Claude backup successful")
-            else:
-                errors.append(f"Claude backup: {backup_error}")
-    
-    # If both failed, create simple fallback content
-    if not content:
-        logger.warning("All AI models failed, generating simple fallback content")
-        content = generate_fallback_content(idea, collection_url)
-        if content:
-            logger.info("Fallback content generated successfully")
-        else:
-            error_msg = " | ".join(errors)
-            logger.error(f"All generation methods failed: {error_msg}")
-            raise Exception(f"All AI models failed: {error_msg}")
-    
-    # Validate content quality
-    if len(content.strip()) < 200:
-        raise Exception("AI returned insufficient content")
-    
-    # Add featured image in content if available
-    if idea.get('featured_image'):
-        image_html = f'''
-        <div style="text-align: center; margin: 30px 0;">
-            <img src="{idea['featured_image']}" alt="{idea['title']}" style="width:100%;max-width:600px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
-            <p style="font-size:14px;color:#666;margin-top:10px;font-style:italic;">Featured: {idea.get('featured_product', {}).get('title', 'NeonXpert Open Sign')}</p>
-        </div>
-        '''
-        # Insert image after first paragraph
-        paragraphs = content.split('</p>')
-        if len(paragraphs) > 1:
-            content = paragraphs[0] + '</p>' + image_html + '</p>'.join(paragraphs[1:])
-        else:
-            # If no paragraphs found, add image after first heading
-            content = content.replace('</h2>', '</h2>' + image_html, 1)
-    
-    return content
-
-def try_claude_generation(prompt):
-    """Safely try Claude generation with proxy-free client"""
-    try:
-        # Create client with explicit proxy settings to avoid environment conflicts
-        import httpx
-        
-        # Create HTTP client without any proxy settings
-        http_client = httpx.Client(
-            proxies=None,  # Explicitly disable proxies
-            timeout=60.0
-        )
-        
-        client = anthropic.Anthropic(
-            api_key=os.getenv('ANTHROPIC_API_KEY'),
-            http_client=http_client
-        )
-        
-        # Try Claude 3.5 Sonnet first
-        try:
-            response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4000,
-                temperature=0.6,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            content = response.content[0].text
-            logger.info("Content generated with Claude 3.5 Sonnet")
-            http_client.close()
-            return content, None
+        # Initialize Claude client only when needed - LATEST CLAUDE 3.5 SONNET
+        global claude_client
+        if claude_client is None:
+            claude_client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
             
-        except Exception as sonnet_error:
-            logger.warning(f"Claude 3.5 Sonnet failed: {sonnet_error}")
-            
-            # Try Claude 3 Sonnet fallback
-            try:
-                response = client.messages.create(
-                    model="claude-3-sonnet-20240229",
-                    max_tokens=4000,
-                    temperature=0.6,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                content = response.content[0].text
-                logger.info("Content generated with Claude 3 Sonnet (fallback)")
-                http_client.close()
-                return content, None
-                
-            except Exception as fallback_error:
-                logger.error(f"Claude 3 Sonnet fallback failed: {fallback_error}")
-                http_client.close()
-                return None, f"All Claude models failed: {fallback_error}"
-                
-    except Exception as client_error:
-        logger.error(f"Claude client initialization failed: {client_error}")
-        return None, f"Claude client error: {client_error}"
-
-def try_openai_generation(prompt):
-    """Safely try OpenAI generation with proxy-free client"""
-    try:
-        # Create client with explicit proxy settings to avoid environment conflicts
-        import httpx
-        
-        # Create HTTP client without any proxy settings
-        http_client = httpx.Client(
-            proxies=None,  # Explicitly disable proxies
-            timeout=60.0
+        response = claude_client.messages.create(
+            model="claude-3-5-sonnet-20241022",  # LATEST AND BEST Claude model
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}]
         )
-        
-        client = openai.OpenAI(
-            api_key=os.getenv('OPENAI_API_KEY'),
-            http_client=http_client
+        return response.content[0].text
+    
+    else:  # ChatGPT - LATEST GPT-4o MODEL
+        global openai_client
+        if openai_client is None:
+            openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+            
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",  # LATEST AND BEST OpenAI model
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=4000,
+            temperature=0.7
         )
-        
-        # Try GPT-4o first
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=4000,
-                temperature=0.6
-            )
-            content = response.choices[0].message.content
-            logger.info("Content generated with GPT-4o")
-            http_client.close()
-            return content, None
-            
-        except Exception as gpt4o_error:
-            logger.warning(f"GPT-4o failed: {gpt4o_error}")
-            
-            # Try GPT-4 fallback
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=4000,
-                    temperature=0.6
-                )
-                content = response.choices[0].message.content
-                logger.info("Content generated with GPT-4 (fallback)")
-                http_client.close()
-                return content, None
-                
-            except Exception as fallback_error:
-                logger.error(f"GPT-4 fallback failed: {fallback_error}")
-                http_client.close()
-                return None, f"All OpenAI models failed: {fallback_error}"
-                
-    except Exception as client_error:
-        logger.error(f"OpenAI client initialization failed: {client_error}")
-        return None, f"OpenAI client error: {client_error}"
+        return response.choices[0].message.content
 
 def create_slug(title):
-    """Create SEO-friendly URL slug"""
+    """Create SEO-friendly slug from title"""
+    import re
     slug = title.lower()
     slug = re.sub(r'[^\w\s-]', '', slug)
     slug = re.sub(r'[-\s]+', '-', slug)
-    return slug.strip('-')[:60]
+    return slug.strip('-')
 
-def get_professional_tags(title, category):
-    """Generate professional, relevant tags without 'AutoBlog'"""
-    tags = [category, "NeonXpert", "2025"]
+def get_smart_tags(title, category):
+    """Generate smart tags based on title and category"""
+    tags = ["AutoBlog", category]
     
     title_lower = title.lower()
-    
-    # Add contextual professional tags
-    if any(word in title_lower for word in ["business", "commercial"]):
-        tags.append("Business Signage")
-    if any(word in title_lower for word in ["dispensary", "cannabis"]):
-        tags.append("Cannabis Business")
-    if any(word in title_lower for word in ["coffee", "cafe"]):
-        tags.append("Coffee Shop Marketing")
-    if any(word in title_lower for word in ["restaurant", "dining"]):
-        tags.append("Restaurant Marketing")
-    if any(word in title_lower for word in ["open", "welcome"]):
+    if any(x in title_lower for x in ["business", "commercial"]): 
+        tags.append("Business")
+    if any(x in title_lower for x in ["wedding", "marriage"]):
+        tags.append("Wedding")
+    if any(x in title_lower for x in ["home", "decor", "room"]):
+        tags.append("Home Decor")
+    if any(x in title_lower for x in ["kids", "children", "family"]):
+        tags.append("Kids")
+    if any(x in title_lower for x in ["open", "sign"]):
         tags.append("Open Signs")
-    if any(word in title_lower for word in ["funny", "humor"]):
-        tags.append("Humor Marketing")
-    if any(word in title_lower for word in ["custom", "personalized"]):
-        tags.append("Custom Neon")
     
-    # Add industry tags
-    tags.extend(["LED Signs", "Business Marketing", "Storefront Design"])
-    
-    return ", ".join(tags[:8])  # Limit to 8 tags
-
-def generate_fallback_content(idea, collection_url):
-    """Generate basic content when AI fails - better than nothing!"""
-    try:
-        title = idea['title']
-        category = idea.get('category', 'Business')
-        subcategory = idea.get('subcategory', 'Signs')
-        focus_keyword = idea.get('focus_keyword', 'neon signs')
-        
-        content = f"""
-<h1>{title}</h1>
-
-<p>Welcome to our comprehensive guide on {subcategory.lower()}. As experts in the neon signage industry, we understand the importance of quality signage for your business success.</p>
-
-<h2>Why {subcategory} Matter for Your Business</h2>
-
-<p>In today's competitive market, having the right signage can make all the difference. {subcategory} serve as powerful marketing tools that:</p>
-
-<ul>
-<li>Attract new customers to your business</li>
-<li>Create a professional and welcoming atmosphere</li>
-<li>Increase visibility and brand recognition</li>
-<li>Communicate your business hours and availability</li>
-</ul>
-
-<h2>Choosing the Right {subcategory}</h2>
-
-<p>When selecting {focus_keyword} for your business, consider these important factors:</p>
-
-<ul>
-<li><strong>Visibility:</strong> Ensure your sign can be seen from a reasonable distance</li>
-<li><strong>Durability:</strong> Choose weather-resistant materials for outdoor use</li>
-<li><strong>Design:</strong> Match your sign to your brand aesthetic</li>
-<li><strong>Energy Efficiency:</strong> LED options provide bright illumination with lower energy costs</li>
-</ul>
-
-<h2>Professional Installation and Quality</h2>
-
-<p>At NeonXpert, we specialize in creating high-quality neon signs that meet your specific business needs. Our experienced team ensures proper installation and long-lasting performance.</p>
-
-<p>Our collection includes a wide variety of options to suit different business types and preferences. Whether you need something simple and elegant or bold and eye-catching, we have solutions that work.</p>
-
-<h2>Get Started Today</h2>
-
-<p>Ready to enhance your business with professional signage? Browse our <a href="{collection_url}">complete collection</a> to find the perfect sign for your needs.</p>
-
-<p>For custom solutions, check out our <a href="https://neonxpert.com/products/custom-neon-sign">custom neon sign options</a> where you can create something truly unique for your business.</p>
-
-<p>Contact our team today to discuss your signage needs and discover how the right sign can transform your business visibility and customer engagement.</p>
-"""
-        
-        return content.strip()
-        
-    except Exception as e:
-        logger.error(f"Fallback content generation failed: {e}")
-        return None
+    return ", ".join(tags)
 
 if __name__ == '__main__':
+    # Create uploads directory if it doesn't exist
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    # Run the app
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
