@@ -31,7 +31,7 @@
                         <h1 class="text-2xl font-bold text-white">NeonXpert Blog Generator</h1>
                         <span class="text-white/60 text-sm">Product-Focused AI Content</span>
                     </div>
-                    <div class="text-white/80 text-sm">Real Products • Real Content • Real Results</div>
+                    <div class="text-white/80 text-sm">Rich Schema • LLM Optimized • Technical SEO • Real Results</div>
                 </div>
             </div>
         </div>
@@ -163,6 +163,26 @@
                     </div>
                 </div>
 
+                <!-- SEO & Technical Optimization Info -->
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <div class="flex items-start space-x-3">
+                        <i class="fas fa-search text-green-500 mt-1"></i>
+                        <div>
+                            <h4 class="font-medium text-green-800 mb-2">Advanced SEO & LLM Optimization</h4>
+                            <div class="grid grid-cols-2 gap-4 text-green-700 text-sm">
+                                <div>
+                                    <p><strong>Rich Schema:</strong> Article, Product, Author, Organization markup</p>
+                                    <p><strong>Technical SEO:</strong> Meta descriptions, canonical URLs, Open Graph</p>
+                                </div>
+                                <div>
+                                    <p><strong>LLM Discovery:</strong> Structured data, quotable insights, factual statements</p>
+                                    <p><strong>AI Training:</strong> Optimized for future AI model citations</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- AI Intelligence Info -->
                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                     <div class="flex items-start space-x-3">
@@ -214,17 +234,17 @@
                                 <div class="p-4">
                                     <div x-show="!topic.previewContent && !topic.loadingPreview" class="text-center py-4">
                                         <button @click="loadPreview(index)" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                                            <i class="fas fa-eye mr-2"></i>Generate Preview
+                                            <i class="fas fa-eye mr-2"></i>Generate Optimized Preview
                                         </button>
                                         <p class="text-sm text-gray-500 mt-2">
-                                            AI will generate content featuring your specific products
+                                            AI will generate content with Rich Schema, LLM optimization, and technical SEO
                                         </p>
                                     </div>
                                     
                                     <div x-show="topic.loadingPreview" class="text-center py-8">
                                         <i class="fas fa-spinner fa-spin text-2xl text-blue-500 mb-2"></i>
-                                        <p class="text-gray-600">Generating product-focused content with <span x-text="aiModel === 'claude' ? 'Claude 3.5' : 'GPT-4o'"></span>...</p>
-                                        <p class="text-sm text-gray-500 mt-1">Analyzing products and creating intelligent content</p>
+                                        <p class="text-gray-600">Generating optimized content with <span x-text="aiModel === 'claude' ? 'Claude 3.5' : 'GPT-4o'"></span>...</p>
+                                        <p class="text-sm text-gray-500 mt-1">Adding Rich Schema, SEO optimization, and LLM discovery features</p>
                                     </div>
 
                                     <!-- Error Message -->
@@ -251,6 +271,17 @@
                                     </div>
 
                                     <div x-show="topic.previewContent" class="space-y-4">
+                                        <!-- Technical Features Notice -->
+                                        <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                                            <div class="flex items-center space-x-2 text-sm">
+                                                <i class="fas fa-check-circle text-green-500"></i>
+                                                <span class="text-green-700 font-medium">Enhanced Content Includes:</span>
+                                                <span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Rich Schema</span>
+                                                <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">SEO Optimized</span>
+                                                <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">LLM Ready</span>
+                                            </div>
+                                        </div>
+                                        
                                         <!-- Content Preview -->
                                         <div class="preview-content bg-white rounded-lg p-4 border">
                                             <div x-html="topic.previewContent"></div>
@@ -260,6 +291,7 @@
                                         <div class="flex justify-between items-center pt-2 border-t">
                                             <div class="text-sm text-gray-500">
                                                 Word count: <span x-text="topic.wordCount || 'Calculating...'"></span>
+                                                <span class="ml-3 text-green-600">✓ Schema markup included</span>
                                             </div>
                                             <div class="flex space-x-2">
                                                 <button @click="publishSingleTopic(index)" :disabled="publishing"
@@ -283,7 +315,7 @@
                         Publish Selected (<span x-text="selectedTopicCount"></span>)
                     </button>
                     <p class="text-sm text-gray-500 mt-2">
-                        Product-focused content will be generated with <span x-text="aiModel === 'claude' ? 'Claude 3.5' : 'GPT-4o'"></span> during publishing
+                        Rich Schema, SEO optimization, and LLM discovery features included with <span x-text="aiModel === 'claude' ? 'Claude 3.5' : 'GPT-4o'"></span>
                     </p>
                 </div>
             </div>
