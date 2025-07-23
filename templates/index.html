@@ -3,139 +3,634 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NeonXpert Blog Generator</title>
+    <title>NeonXpert Blog Generator - Product-Focused AI Content</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background-color: #6a1b9a; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 8px; }
-        .section { background: #424242; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        h1 { color: #bb86fc; text-align: center; }
-        h2 { color: #03dac6; }
-        label { display: block; margin-top: 10px; color: #bb86fc; }
-        input, select { width: 100%; padding: 10px; margin-top: 5px; background: #212121; color: white; border: 1px solid #bb86fc; border-radius: 4px; }
-        button { background: linear-gradient(90deg, #03dac6, #bb86fc); color: black; padding: 10px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
-        button:hover { opacity: 0.9; }
-        .topic-list { margin-top: 20px; }
-        .topic { background: #616161; padding: 10px; margin-bottom: 10px; border-radius: 4px; }
-        .editable-title { width: 80%; background: #212121; color: white; border: 1px solid #bb86fc; }
-        .progress { color: #03dac6; text-align: center; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .glass-effect { backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .hover-scale { transition: transform 0.2s ease-in-out; }
+        .hover-scale:hover { transform: scale(1.02); }
+        .preview-content { max-height: 400px; overflow-y: auto; }
+        .topic-card { transition: all 0.3s ease; }
+        .topic-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
     </style>
-    <script>
-        let topics = [];  // Global for editing
-
-        function generateTopics() {
-            const formData = new FormData();
-            formData.append('csv_file', document.getElementById('csv_file').files[0]);
-            formData.append('collection_url', document.getElementById('collection_url').value);
-            formData.append('secondary_url', document.getElementById('secondary_url').value);
-            formData.append('ai_model', document.getElementById('ai_model').value);
-
-            fetch('/generate_topics', {
-                method: 'POST',
-                body: formData
-            }).then(response => response.json()).then(data => {
-                if (data.success) {
-                    topics = data.topics;
-                    displayTopics();
-                } else {
-                    alert(data.error);
-                }
-            });
-        }
-
-        function displayTopics() {
-            const list = document.getElementById('topic-list');
-            list.innerHTML = '';
-            topics.forEach((topic, index) => {
-                const div = document.createElement('div');
-                div.className = 'topic';
-                div.innerHTML = `
-                    <input type="checkbox" id="topic-${index}">
-                    <input type="text" class="editable-title" value="${topic.title}" onchange="topics[${index}].title = this.value">
-                    <p>${topic.description}</p>
-                    <p>Category: ${topic.category} | Type: ${topic.type} | Est. Words: ${topic.wordCount}</p>
-                `;
-                list.appendChild(div);
-            });
-        }
-
-        function regenerateAll() {
-            generateTopics();
-        }
-
-        function regenerateSelected() {
-            // Logic to regen only checked; for simplicity, alert and regen all with note
-            alert('Regenerating selected topics...');
-            generateTopics();  // Expand as needed
-        }
-
-        function publishSelected() {
-            const selected = [];
-            document.querySelectorAll('.topic input[type="checkbox"]:checked').forEach(checkbox => {
-                const index = checkbox.id.split('-')[1];
-                selected.push(topics[index]);
-            });
-            if (selected.length === 0) return alert('Select topics to publish');
-            
-            document.getElementById('progress').innerText = 'Publishing...';
-            
-            selected.forEach((topic, i) => {
-                fetch('/publish_blog', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        topic,
-                        collection_url: document.getElementById('collection_url').value,
-                        secondary_url: document.getElementById('secondary_url').value,
-                        ai_model: document.getElementById('ai_model').value,
-                        product_data: []  // Pass full data; assume from gen
-                    })
-                }).then(response => response.json()).then(data => {
-                    if (data.success) {
-                        document.getElementById('progress').innerText += `\nBlog ${i+1} published: ${data.blog_url}`;
-                    } else {
-                        alert(data.error);
-                    }
-                });
-            });
-        }
-    </script>
 </head>
-<body>
-    <div class="container">
-        <h1>NeonXpert Blog Generator</h1>
-        <div class="section">
-            <h2>1. Configuration</h2>
-            <label>Product CSV File</label>
-            <input type="file" id="csv_file">
-            <p>Supports CSV up to 10MB</p>
-            
-            <label>Collection URL</label>
-            <input type="text" id="collection_url">
-            
-            <label>Secondary URL (Optional)</label>
-            <input type="text" id="secondary_url" placeholder="e.g., https://neonxpert.com/products/custom-neon-sign">
-            
-            <label>AI Model</label>
-            <select id="ai_model">
-                <option value="claude">Claude (Anthropic AI)</option>
-                <option value="chatgpt">ChatGPT (OpenAI)</option>
-            </select>
-            
-            <button onclick="generateTopics()">Generate Topics</button>
-        </div>
+<body class="bg-gray-50 min-h-screen">
+    <div class="gradient-bg min-h-screen" x-data="productBlogGenerator()">
         
-        <div class="section">
-            <h2>2. Select & Edit Topics</h2>
-            <button onclick="regenerateAll()">Regenerate All</button>
-            <button onclick="regenerateSelected()">Regenerate Selected</button>
-            <div id="topic-list" class="topic-list"></div>
+        <!-- Header -->
+        <div class="bg-white/10 glass-effect">
+            <div class="max-w-7xl mx-auto px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-blog text-white text-lg"></i>
+                        </div>
+                        <h1 class="text-2xl font-bold text-white">NeonXpert Blog Generator</h1>
+                        <span class="text-white/60 text-sm">Product-Focused AI Content</span>
+                    </div>
+                    <div class="text-white/80 text-sm">Real Products • Real Content • Real Results</div>
+                </div>
+            </div>
         </div>
-        
-        <div class="section">
-            <h2>3. Publishing</h2>
-            <button onclick="publishSelected()">Publish Selected</button>
-            <p id="progress" class="progress"></p>
+
+        <!-- Main Content -->
+        <div class="max-w-6xl mx-auto px-6 py-8">
+            
+            <!-- Step 1: Configuration -->
+            <div class="bg-white rounded-2xl shadow-2xl p-8 mb-8 hover-scale">
+                <div class="flex items-center space-x-3 mb-6">
+                    <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">1</div>
+                    <h2 class="text-2xl font-bold text-gray-800">Configuration</h2>
+                </div>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- CSV Upload -->
+                    <div class="space-y-4">
+                        <label class="block text-sm font-semibold text-gray-700">Product CSV File</label>
+                        <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-500 transition-colors cursor-pointer"
+                             @click="$refs.fileInput.click()" @dragover.prevent @drop.prevent="handleFileDrop($event)">
+                            <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
+                            <p class="text-gray-600 mb-2">Drop your CSV file here or click to browse</p>
+                            <p class="text-sm text-gray-400">Supports CSV files up to 10MB</p>
+                            <input type="file" x-ref="fileInput" @change="handleFileSelect($event)" accept=".csv" class="hidden">
+                        </div>
+                        <div x-show="csvFile" class="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <i class="fas fa-file-csv text-green-500"></i>
+                                    <span class="text-green-700 font-medium" x-text="csvFile?.name"></span>
+                                </div>
+                                <button @click="csvFile = null; topics = []" class="text-red-500 hover:text-red-700">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Settings -->
+                    <div class="space-y-6">
+                        <!-- Collection URL -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Collection URL</label>
+                            <div class="flex space-x-2">
+                                <input type="text" x-model="collectionUrl" placeholder="https://neonxpert.com/collections/dispensary-open-signs"
+                                       class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <button @click="validateCollection()" :disabled="!collectionUrl || validating"
+                                        class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50">
+                                    <i class="fas" :class="validating ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+                                </button>
+                            </div>
+                            <div x-show="collectionStatus.validated" class="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <div class="flex items-center space-x-2">
+                                    <i class="fas fa-check-circle text-green-500"></i>
+                                    <span class="text-green-700 font-medium" x-text="collectionStatus.title"></span>
+                                </div>
+                                <p class="text-green-600 text-sm mt-1" x-text="collectionStatus.description"></p>
+                            </div>
+                            <div x-show="collectionStatus.error" class="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>
+                                <span class="text-red-700 text-sm" x-text="collectionStatus.error"></span>
+                            </div>
+                        </div>
+
+                        <!-- Secondary URL -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Secondary URL (Optional)</label>
+                            <input type="text" x-model="secondaryUrl" placeholder="https://neonxpert.com/products/custom-neon-sign"
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <p class="text-sm text-gray-500 mt-1">Additional page to link to in content (e.g., custom product page)</p>
+                        </div>
+
+                        <!-- AI Model Selection -->
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-3">AI Model</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <label class="flex items-center space-x-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
+                                       :class="aiModel === 'claude' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                                    <input type="radio" x-model="aiModel" value="claude" class="text-blue-500">
+                                    <div>
+                                        <div class="font-medium text-gray-800">Claude 3.5</div>
+                                        <div class="text-sm text-gray-500">Product-focused content</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-center space-x-3 p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50"
+                                       :class="aiModel === 'chatgpt' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                                    <input type="radio" x-model="aiModel" value="chatgpt" class="text-blue-500">
+                                    <div>
+                                        <div class="font-medium text-gray-800">GPT-4o</div>
+                                        <div class="text-sm text-gray-500">SEO optimized</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 text-center">
+                    <button @click="generateTopics()" 
+                            :disabled="!csvFile || !collectionStatus.validated || generating"
+                            class="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-xl hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 transform hover:scale-105 transition-all duration-200 shadow-lg">
+                        <i class="fas" :class="generating ? 'fa-spinner fa-spin' : 'fa-magic'" class="mr-2"></i>
+                        <span x-text="generating ? 'Analyzing Products & Generating Topics...' : 'Generate Product-Focused Topics'"></span>
+                    </button>
+                    <p class="text-sm text-gray-500 mt-2">
+                        AI will analyze your products and create intelligent blog topics based on actual product data
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 2: Topic Management -->
+            <div x-show="topics.length > 0" class="bg-white rounded-2xl shadow-2xl p-8 mb-8 hover-scale">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold">2</div>
+                        <h2 class="text-2xl font-bold text-gray-800">Review & Edit Topics</h2>
+                        <span class="text-sm text-gray-500" x-text="`${topics.length} topics generated • ${productCount} products analyzed`"></span>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="selectAllTopics()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                            Select All
+                        </button>
+                        <button @click="deselectAllTopics()" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">
+                            Deselect All
+                        </button>
+                        <button @click="regenerateTopics()" :disabled="generating" class="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50">
+                            <i class="fas fa-refresh mr-1"></i>Regenerate
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AI Intelligence Info -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div class="flex items-start space-x-3">
+                        <i class="fas fa-brain text-blue-500 mt-1"></i>
+                        <div>
+                            <h4 class="font-medium text-blue-800 mb-2">Product-Focused AI Intelligence</h4>
+                            <p class="text-blue-700 text-sm">
+                                AI analyzed your actual product data (titles, tags, descriptions) to create topics that showcase YOUR specific inventory. 
+                                Each blog naturally links to and features your real products, not generic content.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <template x-for="(topic, index) in topics" :key="index">
+                        <div class="topic-card border border-gray-200 rounded-lg overflow-hidden">
+                            <!-- Topic Header -->
+                            <div class="p-4 flex items-start space-x-3">
+                                <input type="checkbox" x-model="topic.selected" class="mt-1 text-blue-500 rounded">
+                                <div class="flex-1">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex-1">
+                                            <input type="text" x-model="topic.title" 
+                                                   class="font-semibold text-gray-800 mb-2 w-full bg-transparent border-none p-0 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
+                                            <p class="text-sm text-gray-600 mb-2" x-text="topic.description"></p>
+                                            <div class="flex items-center space-x-4 text-xs">
+                                                <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full" x-text="topic.category"></span>
+                                                <span class="text-gray-500">Type: <span x-text="topic.type"></span></span>
+                                                <span class="text-gray-500">Words: <span x-text="topic.wordCount"></span></span>
+                                                <span x-show="topic.relevant_products && topic.relevant_products.length > 0" class="text-green-600">
+                                                    <i class="fas fa-box mr-1"></i><span x-text="topic.relevant_products.length"></span> products featured
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="flex space-x-2 ml-4">
+                                            <button @click="togglePreview(index)" 
+                                                    :class="topic.showPreview ? 'text-blue-500' : 'text-gray-400'"
+                                                    class="hover:text-blue-500">
+                                                <i class="fas" :class="topic.showPreview ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Preview Section -->
+                            <div x-show="topic.showPreview" x-collapse class="border-t border-gray-200 bg-gray-50">
+                                <div class="p-4">
+                                    <div x-show="!topic.previewContent && !topic.loadingPreview" class="text-center py-4">
+                                        <button @click="loadPreview(index)" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                                            <i class="fas fa-eye mr-2"></i>Generate Preview
+                                        </button>
+                                        <p class="text-sm text-gray-500 mt-2">
+                                            AI will generate content featuring your specific products
+                                        </p>
+                                    </div>
+                                    
+                                    <div x-show="topic.loadingPreview" class="text-center py-8">
+                                        <i class="fas fa-spinner fa-spin text-2xl text-blue-500 mb-2"></i>
+                                        <p class="text-gray-600">Generating product-focused content with <span x-text="aiModel === 'claude' ? 'Claude 3.5' : 'GPT-4o'"></span>...</p>
+                                        <p class="text-sm text-gray-500 mt-1">Analyzing products and creating intelligent content</p>
+                                    </div>
+
+                                    <!-- Error Message -->
+                                    <div x-show="topic.error" class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                                        <div class="flex items-start space-x-3">
+                                            <i class="fas fa-exclamation-triangle text-red-500 mt-1"></i>
+                                            <div>
+                                                <h4 class="font-medium text-red-800">Preview Generation Failed</h4>
+                                                <p class="text-red-600 text-sm mt-1" x-text="topic.error"></p>
+                                                <div class="mt-3 flex space-x-2">
+                                                    <button @click="retryPreview(index, 'claude')" 
+                                                            :disabled="topic.loadingPreview"
+                                                            class="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 disabled:opacity-50">
+                                                        Try Claude
+                                                    </button>
+                                                    <button @click="retryPreview(index, 'chatgpt')" 
+                                                            :disabled="topic.loadingPreview"
+                                                            class="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600 disabled:opacity-50">
+                                                        Try GPT-4o
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div x-show="topic.previewContent" class="space-y-4">
+                                        <!-- Content Preview -->
+                                        <div class="preview-content bg-white rounded-lg p-4 border">
+                                            <div x-html="topic.previewContent"></div>
+                                        </div>
+                                        
+                                        <!-- Preview Actions -->
+                                        <div class="flex justify-between items-center pt-2 border-t">
+                                            <div class="text-sm text-gray-500">
+                                                Word count: <span x-text="topic.wordCount || 'Calculating...'"></span>
+                                            </div>
+                                            <div class="flex space-x-2">
+                                                <button @click="publishSingleTopic(index)" :disabled="publishing"
+                                                        class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50">
+                                                    <i class="fas fa-rocket mr-1"></i>Publish Now
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Bulk Publish -->
+                <div class="mt-8 text-center border-t pt-6">
+                    <button @click="startBulkPublishing()" :disabled="selectedTopicCount === 0 || publishing"
+                            class="px-8 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white font-bold rounded-lg hover:from-green-600 hover:to-teal-700 disabled:opacity-50">
+                        <i class="fas fa-rocket mr-2"></i>
+                        Publish Selected (<span x-text="selectedTopicCount"></span>)
+                    </button>
+                    <p class="text-sm text-gray-500 mt-2">
+                        Product-focused content will be generated with <span x-text="aiModel === 'claude' ? 'Claude 3.5' : 'GPT-4o'"></span> during publishing
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 3: Publishing Progress -->
+            <div x-show="publishing" class="bg-white rounded-2xl shadow-2xl p-8 hover-scale">
+                <div class="flex items-center space-x-3 mb-6">
+                    <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">3</div>
+                    <h2 class="text-2xl font-bold text-gray-800">Publishing Progress</h2>
+                </div>
+
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm text-gray-600">Publishing blogs...</span>
+                        <span class="text-sm text-gray-600" x-text="`${publishedCount}/${totalToPublish}`"></span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3">
+                        <div class="bg-gradient-to-r from-green-500 to-teal-600 h-3 rounded-full transition-all duration-300"
+                             :style="`width: ${totalToPublish > 0 ? (publishedCount/totalToPublish)*100 : 0}%`"></div>
+                    </div>
+                </div>
+
+                <div x-show="currentlyProcessing" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="animate-spin"><i class="fas fa-spinner text-blue-500"></i></div>
+                        <div>
+                            <div class="font-medium text-blue-800">Currently processing:</div>
+                            <div class="text-blue-600" x-text="currentlyProcessing"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-2 max-h-64 overflow-y-auto">
+                    <template x-for="blog in publishedBlogs" :key="blog.id">
+                        <div class="flex items-center space-x-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <i class="fas fa-check-circle text-green-500"></i>
+                            <div class="flex-1">
+                                <div class="font-medium text-green-800" x-text="blog.title"></div>
+                                <a :href="blog.url" target="_blank" class="text-sm text-green-600 hover:underline">
+                                    View published blog →
+                                </a>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <template x-for="blog in failedBlogs" :key="blog.title">
+                        <div class="flex items-center space-x-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <i class="fas fa-exclamation-circle text-red-500"></i>
+                            <div class="flex-1">
+                                <div class="font-medium text-red-800" x-text="blog.title"></div>
+                                <div class="text-sm text-red-600" x-text="blog.error"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <div x-show="publishingComplete" class="mt-6 p-6 bg-green-50 border border-green-200 rounded-lg text-center">
+                    <i class="fas fa-trophy text-green-500 text-3xl mb-4"></i>
+                    <h3 class="text-xl font-bold text-green-800 mb-2">Publishing Complete!</h3>
+                    <p class="text-green-600">
+                        <span x-text="publishedBlogs.length"></span> blogs published successfully.
+                        <span x-show="failedBlogs.length > 0" class="text-red-600">
+                            <span x-text="failedBlogs.length"></span> failed.
+                        </span>
+                    </p>
+                </div>
+            </div>
+
         </div>
     </div>
+
+    <script>
+        function productBlogGenerator() {
+            return {
+                // State
+                csvFile: null,
+                collectionUrl: '',
+                secondaryUrl: '',
+                collectionStatus: { validated: false, title: '', description: '', error: '' },
+                aiModel: 'claude',
+                topics: [],
+                productCount: 0,
+                publishing: false,
+                publishedCount: 0,
+                totalToPublish: 0,
+                currentlyProcessing: null,
+                publishedBlogs: [],
+                failedBlogs: [],
+                publishingComplete: false,
+                
+                // Loading states
+                validating: false,
+                generating: false,
+
+                get selectedTopicCount() {
+                    return this.topics.filter(topic => topic.selected).length;
+                },
+
+                handleFileDrop(event) {
+                    const files = event.dataTransfer.files;
+                    if (files.length > 0 && files[0].name.endsWith('.csv')) {
+                        this.csvFile = files[0];
+                        this.topics = [];
+                    }
+                },
+
+                handleFileSelect(event) {
+                    if (event.target.files.length > 0) {
+                        this.csvFile = event.target.files[0];
+                        this.topics = [];
+                    }
+                },
+
+                async validateCollection() {
+                    if (!this.collectionUrl) return;
+                    this.validating = true;
+                    this.collectionStatus = { validated: false, title: '', description: '', error: '' };
+                    
+                    try {
+                        const response = await fetch('/validate_collection', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: this.collectionUrl })
+                        });
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            this.collectionStatus = {
+                                validated: true, title: result.title, description: result.description, error: ''
+                            };
+                        } else {
+                            this.collectionStatus.error = result.error;
+                        }
+                    } catch (error) {
+                        this.collectionStatus.error = 'Failed to validate collection URL';
+                    } finally {
+                        this.validating = false;
+                    }
+                },
+
+                async generateTopics() {
+                    if (!this.csvFile || !this.collectionStatus.validated) return;
+                    this.generating = true;
+
+                    const formData = new FormData();
+                    formData.append('csv_file', this.csvFile);
+                    formData.append('collection_url', this.collectionUrl);
+                    formData.append('secondary_url', this.secondaryUrl);
+                    formData.append('ai_model', this.aiModel);
+
+                    try {
+                        const response = await fetch('/generate_topics', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            this.topics = result.topics.map(topic => ({
+                                ...topic,
+                                selected: true,
+                                showPreview: false,
+                                previewContent: null,
+                                loadingPreview: false,
+                                error: null
+                            }));
+                            this.productCount = result.product_count;
+                        } else {
+                            alert('Topic generation failed: ' + result.error);
+                        }
+                    } catch (error) {
+                        alert('Failed to generate topics: ' + error.message);
+                    } finally {
+                        this.generating = false;
+                    }
+                },
+
+                async regenerateTopics() {
+                    await this.generateTopics();
+                },
+
+                selectAllTopics() { 
+                    this.topics.forEach(topic => topic.selected = true); 
+                },
+                
+                deselectAllTopics() { 
+                    this.topics.forEach(topic => topic.selected = false); 
+                },
+
+                togglePreview(index) {
+                    this.topics[index].showPreview = !this.topics[index].showPreview;
+                },
+
+                async loadPreview(index) {
+                    const topic = this.topics[index];
+                    if (topic.previewContent) return;
+                    
+                    topic.loadingPreview = true;
+                    topic.error = null;
+
+                    try {
+                        const response = await fetch('/generate_preview', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                topic: topic,
+                                collection_url: this.collectionUrl,
+                                secondary_url: this.secondaryUrl,
+                                ai_model: this.aiModel
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            topic.previewContent = result.content;
+                            topic.wordCount = result.word_count;
+                        } else {
+                            topic.error = result.error;
+                        }
+                    } catch (error) {
+                        topic.error = 'Network error: ' + error.message;
+                    } finally {
+                        topic.loadingPreview = false;
+                    }
+                },
+
+                async retryPreview(index, specificModel) {
+                    const topic = this.topics[index];
+                    topic.error = null;
+                    topic.previewContent = null;
+                    topic.loadingPreview = true;
+
+                    try {
+                        const response = await fetch('/generate_preview', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                topic: topic,
+                                collection_url: this.collectionUrl,
+                                secondary_url: this.secondaryUrl,
+                                ai_model: specificModel
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            topic.previewContent = result.content;
+                            topic.wordCount = result.word_count;
+                        } else {
+                            topic.error = `${specificModel.toUpperCase()} failed: ${result.error}`;
+                        }
+                    } catch (error) {
+                        topic.error = `${specificModel.toUpperCase()} network error: ${error.message}`;
+                    } finally {
+                        topic.loadingPreview = false;
+                    }
+                },
+
+                async publishSingleTopic(index) {
+                    const topic = this.topics[index];
+                    this.currentlyProcessing = topic.title;
+
+                    try {
+                        const response = await fetch('/publish_blog', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                topic: topic,
+                                collection_url: this.collectionUrl,
+                                secondary_url: this.secondaryUrl,
+                                ai_model: this.aiModel,
+                                custom_content: topic.previewContent
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            alert(`Blog "${topic.title}" published successfully!\n\nView at: ${result.blog_url}`);
+                            topic.selected = false;
+                            topic.published = true;
+                        } else {
+                            alert('Publishing failed: ' + result.error);
+                        }
+                    } catch (error) {
+                        alert('Publishing failed: ' + error.message);
+                    } finally {
+                        this.currentlyProcessing = null;
+                    }
+                },
+
+                async startBulkPublishing() {
+                    const selectedTopics = this.topics.filter(topic => topic.selected);
+                    if (selectedTopics.length === 0) return;
+
+                    this.publishing = true;
+                    this.publishedCount = 0;
+                    this.totalToPublish = selectedTopics.length;
+                    this.publishedBlogs = [];
+                    this.failedBlogs = [];
+                    this.publishingComplete = false;
+
+                    for (const topic of selectedTopics) {
+                        this.currentlyProcessing = topic.title;
+                        
+                        try {
+                            const response = await fetch('/publish_blog', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    topic: topic,
+                                    collection_url: this.collectionUrl,
+                                    secondary_url: this.secondaryUrl,
+                                    ai_model: this.aiModel,
+                                    custom_content: topic.previewContent
+                                })
+                            });
+                            
+                            const result = await response.json();
+                            if (result.success) {
+                                this.publishedBlogs.push({
+                                    id: result.blog_id,
+                                    title: topic.title,
+                                    url: result.blog_url
+                                });
+                                this.publishedCount++;
+                            } else {
+                                this.failedBlogs.push({
+                                    title: topic.title,
+                                    error: result.error
+                                });
+                            }
+                        } catch (error) {
+                            this.failedBlogs.push({
+                                title: topic.title,
+                                error: 'Network error: ' + error.message
+                            });
+                        }
+                        
+                        // Small delay between publishes
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+
+                    this.currentlyProcessing = null;
+                    this.publishingComplete = true;
+                }
+            }
+        }
+    </script>
 </body>
 </html>
