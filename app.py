@@ -193,19 +193,26 @@ def generate_ai_topics(product_data_json, collection_url, secondary_url, ai_mode
     
     secondary_prompt = f"Include 1-2 natural links to {secondary_url} if provided." if secondary_url else ""
     
-    # Keep Grok's excellent prompt but make it more robust
+    # Get current year dynamically
+    import datetime
+    current_year = datetime.datetime.now().year
+    
+    # Enhanced prompt with current year
     prompt = f"""
     Analyze this NeonXpert product data from the {collection_name} collection: {product_data_json}
     
     Requirements:
+    - Use {current_year} as the current year in all titles and descriptions
     - Identify subcategories/clusters from tags/titles (e.g., industries like coffee shops, dispensaries; intents like funny, budget).
-    - Infer a keyword pool like Google autocomplete (e.g., 'neon open signs for cafes 2025', 'custom neon open signs weed').
+    - Infer a keyword pool like Google autocomplete (e.g., 'neon open signs for cafes {current_year}', 'custom neon open signs weed').
     - Generate a dynamic number of unique blog topics/titles based on scope (e.g., 2-5 for small, 20+ for large with 100+ products; 1-2 pillars + cluster-specific).
-    - Each topic: {{"title": "SEO-optimized title with NeonXpert mention", "description": "Brief summary", "category": "e.g., How-To", "wordCount": "Dynamic: 800-3000 based on scope", "type": "e.g., listicle", "relevant_products": [list of handles for links/images]}}
+    - Each topic: {{"title": "SEO-optimized title with NeonXpert mention using {current_year}", "description": "Brief summary", "category": "e.g., How-To", "wordCount": "Dynamic: 800-3000 based on scope", "type": "e.g., listicle", "relevant_products": [list of handles for links/images]}}
     - Variety: Mix listicles, guides, trends; avoid repetition.
     - Value: Practical, data-backed (use real stats like 'signs boost traffic 15-30% per studies').
     
-    CRITICAL: Return ONLY a valid JSON array. No extra text, no markdown formatting, just the JSON array.
+    CRITICAL: 
+    - Use {current_year} consistently in titles and descriptions
+    - Return ONLY a valid JSON array. No extra text, no markdown formatting, just the JSON array.
     """
     
     try:
@@ -374,10 +381,11 @@ def publish_blog():
         
         slug = create_slug(topic['title'])
         
-        # Enhanced blog data - always create the blog even without image
+        # Enhanced blog data with author attribution
         blog_data = {
             "article": {
                 "title": topic['title'],
+                "author": "Alex Chen",  # Professional author name
                 "body_html": blog_html,
                 "blog_id": int(BLOG_ID),
                 "tags": get_smart_tags(topic['title'], topic['category']),
@@ -622,11 +630,34 @@ def upload_image_to_shopify(image_url):
         return None
 
 def create_slug(title):
-    """Keep Grok's slug creation"""
+    """Enhanced slug creation - shorter and more meaningful"""
     slug = title.lower()
+    
+    # Remove common words to shorten URL
+    common_words = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'a', 'an', 'is', 'are', 'was', 'were', 'that', 'this', 'how', 'what', 'why', 'when', 'where']
+    words = slug.split()
+    
+    # Keep important words only
+    filtered_words = []
+    for word in words:
+        if word not in common_words or len(filtered_words) < 3:  # Always keep first 3 words
+            filtered_words.append(word)
+        if len(filtered_words) >= 8:  # Limit to 8 words max
+            break
+    
+    slug = ' '.join(filtered_words)
+    
+    # Clean up characters
     slug = re.sub(r'[^\w\s-]', '', slug)
     slug = re.sub(r'[-\s]+', '-', slug)
-    return slug.strip('-')[:60]
+    slug = slug.strip('-')
+    
+    # Ensure it ends at a word boundary and isn't too long
+    if len(slug) > 50:
+        words = slug.split('-')
+        slug = '-'.join(words[:6])  # Take first 6 words only
+    
+    return slug
 
 def get_smart_tags(title, category):
     """Keep Grok's smart tags but enhance"""
