@@ -370,7 +370,7 @@ def generate_preview():
         return jsonify({'success': False, 'error': f'Preview generation failed: {str(e)}'})
 
 def generate_blog_content(topic, collection_url, secondary_url, product_data, ai_model):
-    """Enhanced content generation focused on REAL product data - NO FAKE STATISTICS!"""
+    """Enhanced content generation with HubSpot-style aesthetics - NO FAKE STATISTICS!"""
     product_json = json.dumps(product_data)
     
     secondary_prompt = f"Include 1-2 natural links to {secondary_url} (e.g., 'Customize at NeonXpert's custom neon sign page') if provided." if secondary_url else ""
@@ -380,7 +380,7 @@ def generate_blog_content(topic, collection_url, secondary_url, product_data, ai
     current_year = current_date.year
     iso_date = current_date.isoformat()
     
-    # ENHANCED PROMPT focused on REAL product data - NO FAKE STATISTICS!
+    # ENHANCED PROMPT with HubSpot-style aesthetics - NO FAKE STATISTICS!
     prompt = f"""
     You are writing a FINAL, PUBLISHED blog article for NeonXpert's website about their ACTUAL products.
     
@@ -388,38 +388,67 @@ def generate_blog_content(topic, collection_url, secondary_url, product_data, ai
     
     REAL PRODUCT DATA TO FEATURE: {product_json}
     
-    CRITICAL REQUIREMENTS:
-    1. Write FINAL content ready for immediate publication - NO "draft" language
+    CRITICAL FORMATTING REQUIREMENTS:
+    1. Write FINAL content ready for immediate publication - NO "draft" language  
     2. Use {current_year} as the current year throughout
     3. Focus ONLY on the actual products provided - their titles, descriptions, themes
     4. NO FAKE STATISTICS - Do not make up percentages, studies, or data
     5. NO FAKE EXPERT QUOTES - Do not quote fictional experts
+    6. OUTPUT ONLY HTML - No markdown (##), use proper <h1>, <h2>, <h3> tags
+    7. INCLUDE ALL INLINE STYLES - Every element must have complete styling
     
-    CONTENT STRUCTURE:
+    CONTENT STRUCTURE - HUBSPOT-STYLE AESTHETICS:
     
-    ## Opening Section
-    <p>Engaging introduction about the specific products in the collection, focusing on their actual features and benefits.</p>
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px; color: white; margin: 20px 0;">
+    <h1 style="color: white; font-size: 28px; margin-bottom: 15px; text-align: center;">ARTICLE TITLE HERE</h1>
+    <p style="font-size: 18px; text-align: center; margin: 0;">Engaging introduction about the specific products, focusing on their actual features and benefits.</p>
+    </div>
     
-    ## Product Showcase Sections
-    <h2>Featured Products from NeonXpert</h2>
+    <div style="background: #f8f9ff; border-left: 4px solid #667eea; padding: 20px; margin: 25px 0; border-radius: 8px;">
+    <h3 style="color: #667eea; margin: 0 0 10px 0;"><i>💡 Key Takeaway</i></h3>
+    <p style="margin: 0; font-weight: 500;">Brief summary of what customers will learn from this article.</p>
+    </div>
     
-    For each relevant product, create a section like:
-    <h3>[Actual Product Title]</h3>
-    <p>Description based on the actual product information provided. Focus on design, colors, themes, and practical uses.</p>
-    <img src="{{image_url}}" alt="{{title}} by NeonXpert - [relevant keyword]" title="{{title}} - Professional Neon Signage" style="width:100%;max-width:600px;height:auto;display:block;margin:20px auto;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,0.1);">
-    <p><a href="https://neonxpert.com/products/{{handle}}" title="{{title}} - NeonXpert">Shop {{title}}</a></p>
+    <h2 style="color: #2d3748; font-size: 24px; margin: 30px 0 20px 0; padding-bottom: 10px; border-bottom: 2px solid #667eea;">Featured Products from NeonXpert</h2>
     
-    ## Practical Information
-    <h2>Styling and Placement Ideas</h2>
-    <ul>
-    <li>Specific suggestions based on the actual product themes and designs</li>
-    <li>Room placement ideas based on product descriptions</li>
-    <li>Styling tips that match the actual product characteristics</li>
-    </ul>
+    For each product, create visually appealing sections:
     
-    ## Care and Installation
-    <h2>Installation and Care</h2>
-    <p>General information about LED neon sign installation and maintenance. Keep factual and practical.</p>
+    <div style="background: white; border-radius: 12px; padding: 25px; margin: 25px 0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); border: 1px solid #e2e8f0;">
+    <h3 style="color: #2d3748; font-size: 20px; margin: 0 0 15px 0;">[Actual Product Title]</h3>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: center;">
+    <div style="flex: 1; min-width: 300px;">
+    <p style="line-height: 1.6; color: #4a5568;">Description based on actual product information. Focus on design, colors, themes, and practical uses.</p>
+    <div style="background: #e6fffa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+    <p style="margin: 0; color: #065f46; font-weight: 500;"><strong>Perfect For:</strong> Specific use cases based on product features</p>
+    </div>
+    </div>
+    <div style="flex: 1; min-width: 250px; text-align: center;">
+    <img src="{{image_url}}" alt="{{title}} by NeonXpert - [relevant keyword]" title="{{title}} - Professional Neon Signage" style="width:100%;max-width:400px;height:auto;border-radius:12px;box-shadow:0 8px 25px rgba(0,0,0,0.15);">
+    <a href="https://neonxpert.com/products/{{handle}}" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 15px; transition: all 0.3s ease;">Shop {{title}}</a>
+    </div>
+    </div>
+    </div>
+    
+    <div style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 12px; padding: 25px; margin: 30px 0;">
+    <h2 style="color: #92400e; font-size: 22px; margin: 0 0 20px 0;"><i>✨</i> Styling and Placement Ideas</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+    <div style="background: white; padding: 15px; border-radius: 8px;">
+    <h4 style="color: #92400e; margin: 0 0 10px 0;">Room Placement</h4>
+    <p style="margin: 0; font-size: 14px; line-height: 1.5;">Specific suggestions based on actual product themes</p>
+    </div>
+    <div style="background: white; padding: 15px; border-radius: 8px;">
+    <h4 style="color: #92400e; margin: 0 0 10px 0;">Design Tips</h4>
+    <p style="margin: 0; font-size: 14px; line-height: 1.5;">Styling tips that match actual product characteristics</p>
+    </div>
+    </div>
+    </div>
+    
+    <div style="background: #f0f9ff; border-radius: 12px; padding: 25px; margin: 30px 0;">
+    <h2 style="color: #0369a1; font-size: 22px; margin: 0 0 20px 0;"><i>🔧</i> Installation and Care</h2>
+    <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #0369a1;">
+    <p style="margin: 0; line-height: 1.6;">General information about LED neon sign installation and maintenance. Keep factual and practical.</p>
+    </div>
+    </div>
     
     PRODUCT INTEGRATION REQUIREMENTS:
     - Feature each product naturally in the content
@@ -429,17 +458,24 @@ def generate_blog_content(topic, collection_url, secondary_url, product_data, ai
     
     FACTUAL GUIDELINES:
     - Only mention general LED neon benefits (energy efficiency, longevity, safety)
-    - Do not invent specific statistics or studies
+    - Do not invent specific statistics or studies  
     - Do not quote experts or authorities
     - Focus on the actual product features and visual appeal
     - Write from the perspective of showcasing real products
+    
+    VISUAL REQUIREMENTS:
+    - Use the exact HTML structure and styling provided above
+    - Every section must have proper background colors, padding, and styling
+    - Include all gradient backgrounds, shadows, and visual elements
+    - Make it look like a premium, professional blog post
+    - Ensure responsive design with proper flex layouts
     
     BRANDING & LINKS:
     - Mention "NeonXpert" naturally 3-5 times
     - Include 2-3 contextual links to: {collection_url}
     - {secondary_prompt}
     
-    Write engaging, informative content that showcases the actual products without fake statistics or expert quotes.
+    Write engaging, informative content that showcases the actual products using the EXACT HTML structure and styling provided above. The final output should be a visually stunning, HubSpot-style blog post with proper gradients, callout boxes, and professional formatting.
     """
     
     try:
