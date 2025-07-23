@@ -282,9 +282,39 @@
                                             </div>
                                         </div>
                                         
-                                        <!-- Content Preview -->
-                                        <div class="preview-content bg-white rounded-lg p-4 border">
-                                            <div x-html="topic.previewContent"></div>
+                                        <!-- Content Preview with Edit Option -->
+                                        <div class="bg-white rounded-lg border">
+                                            <!-- Content Editor Toggle -->
+                                            <div class="flex items-center justify-between p-3 border-b bg-gray-50">
+                                                <span class="text-sm font-medium text-gray-700">Generated Content Preview</span>
+                                                <button @click="topic.editMode = !topic.editMode" 
+                                                        class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">
+                                                    <i class="fas" :class="topic.editMode ? 'fa-eye' : 'fa-edit'" class="mr-1"></i>
+                                                    <span x-text="topic.editMode ? 'Preview' : 'Edit'"></span>
+                                                </button>
+                                            </div>
+                                            
+                                            <!-- Preview Mode -->
+                                            <div x-show="!topic.editMode" class="preview-content p-4">
+                                                <div x-html="topic.previewContent"></div>
+                                            </div>
+                                            
+                                            <!-- Edit Mode -->
+                                            <div x-show="topic.editMode" class="p-4">
+                                                <textarea x-model="topic.editableContent" 
+                                                          class="w-full h-96 p-3 border border-gray-300 rounded font-mono text-sm"
+                                                          placeholder="Edit your blog content here..."></textarea>
+                                                <div class="mt-2 flex space-x-2">
+                                                    <button @click="saveEditedContent(index)" 
+                                                            class="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600">
+                                                        <i class="fas fa-save mr-1"></i>Save Changes
+                                                    </button>
+                                                    <button @click="topic.editMode = false" 
+                                                            class="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600">
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                         
                                         <!-- Preview Actions -->
@@ -292,11 +322,16 @@
                                             <div class="text-sm text-gray-500">
                                                 Word count: <span x-text="topic.wordCount || 'Calculating...'"></span>
                                                 <span class="ml-3 text-green-600">✓ Schema markup included</span>
+                                                <span x-show="topic.isEdited" class="ml-3 text-blue-600">✓ Content edited</span>
                                             </div>
                                             <div class="flex space-x-2">
+                                                <button @click="regenerateContent(index)" :disabled="topic.loadingPreview"
+                                                        class="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50">
+                                                    <i class="fas fa-refresh mr-1"></i>Regenerate
+                                                </button>
                                                 <button @click="publishSingleTopic(index)" :disabled="publishing"
                                                         class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50">
-                                                    <i class="fas fa-rocket mr-1"></i>Publish Now
+                                                    <i class="fas fa-rocket mr-1"></i>Publish This Content
                                                 </button>
                                             </div>
                                         </div>
